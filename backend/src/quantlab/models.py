@@ -92,3 +92,55 @@ class BacktestResult(BaseModel):
     metrics: BacktestMetrics
     trades: list[TradeRecord]
     equity_curve: list[dict]
+
+class Availability(BaseModel):
+    status: Literal["available", "unavailable"]
+    reason: str | None = None
+
+class Holding(BaseModel):
+    code: str | None = None
+    name: str
+    weight: float = Field(ge=0, le=1)
+
+class EtfProfile(BaseModel):
+    tracking_index: str | None = None
+    tracking_index_code: str | None = None
+    manager: str | None = None
+    inception_date: date | None = None
+    size: float | None = None
+    shares: float | None = None
+    size_change_20d: float | None = None
+    share_change_20d: float | None = None
+    turnover_rate: float | None = None
+    nav: float | None = None
+    premium_rate: float | None = None
+    tracking_deviation: float | None = None
+    holdings: list[Holding] = Field(default_factory=list)
+    availability: Availability
+
+class FinancialPeriod(BaseModel):
+    report_date: date
+    revenue: float | None = None
+    revenue_yoy: float | None = None
+    net_profit: float | None = None
+    net_profit_yoy: float | None = None
+    roe: float | None = None
+    gross_margin: float | None = None
+    net_margin: float | None = None
+    debt_ratio: float | None = None
+
+class EquityProfile(BaseModel):
+    industry: str | None = None
+    valuation_trade_date: date | None = None
+    pe: float | None = None
+    pb: float | None = None
+    total_market_cap: float | None = None
+    float_market_cap: float | None = None
+    financial_periods: list[FinancialPeriod] = Field(default_factory=list)
+    availability: Availability
+
+class AssetProfile(BaseModel):
+    code: str
+    asset_type: AssetType
+    etf: EtfProfile | None = None
+    equity: EquityProfile | None = None

@@ -165,3 +165,31 @@ def score_diagnostics(frame: pd.DataFrame) -> Diagnostics:
         volatility=DiagnosticCategory(score=v_score, rules=vol_rules),
         drawdown=DiagnosticCategory(score=d_score, rules=d_rules)
     )
+
+def analyze_market(bars: list, benchmark_bars=None, risk_free_rate: float = 0.02) -> AnalysisResult:
+    if not bars:
+        return AnalysisResult(metrics=PerformanceMetrics(), diagnostics=score_diagnostics(pd.DataFrame()))
+        
+    df = pd.DataFrame([b.model_dump() for b in bars])
+    metrics = performance_metrics(df["close"].pct_change(), risk_free_rate=risk_free_rate)
+    
+    if benchmark_bars:
+        bench_df = pd.DataFrame([b.model_dump() for b in benchmark_bars])
+        # Inner join returns by trade date
+        asset_ret = df.set_index("trade_date")["close"].pct_change()
+        bench_ret = bench_df.set_index("trade_date")["close"].pct_change()
+        overlap = pd.concat([asset_ret, bench_ret], axis=1, join="inner", keys=["asset", "bench"]).dropna()
+        if len(overlap) >= 20:
+            cov = overlap.cov().iloc[0, 1]
+            var = overlap["bench"].var(ddof=1)
+            metrics.beta = float(cov / var) if var > 0 else None
+            metrics.correlation = float(overlap["asset"].corr(overlap["bench"]))
+            # Compounded excess return
+            asset_cum = (1 + overlap["asset"]).prod() - 1
+            bench_cum = (1 + overlap["bench"]).prod() - 1
+            metrics.excess_return = float(asset_cum - bench_cum)
+            
+    frame = technical_frame(df["close"])
+    diagnostics = score_diagnostics(frame)
+    
+    return AnalysisResult(metrics=metrics, diagnostics=diagnostics)

@@ -166,3 +166,6 @@ def run_ma_cross(request: BacktestRequest, bars: List[PriceBar]) -> BacktestResu
         trades=trades,
         equity_curve=equity_curve
     )
+
+class BacktestService:
+    pass
