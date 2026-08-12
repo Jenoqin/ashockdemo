@@ -1,0 +1,12 @@
+akshare
+fastapi
+numpy
+pandas
+pydantic-settings
+tushare
+uvicorn[standard]
+
+[dev]
+httpx
+pytest
+pytest-cov

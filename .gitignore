@@ -1,3 +1,12 @@
 .superpowers/
 .worktrees/
 quant-visual-options.png
+
+.env
+backend/.venv/
+backend/data/
+**/__pycache__/
+.pytest_cache/
+frontend/node_modules/
+frontend/dist/
+frontend/playwright-report/
