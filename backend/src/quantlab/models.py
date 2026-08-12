@@ -58,3 +58,37 @@ class PerformanceMetrics(BaseModel):
 class AnalysisResult(BaseModel):
     metrics: PerformanceMetrics
     diagnostics: Diagnostics
+
+class BacktestRequest(BaseModel):
+    code: str
+    start: date | None = None
+    end: date | None = None
+    fast_window: int = 20
+    slow_window: int = 60
+    fee_rate: float = 0.0001
+    slippage_rate: float = 0.001
+    initial_cash: float = 100000.0
+
+class TradeRecord(BaseModel):
+    signal_date: date
+    execution_date: date
+    direction: Literal["long", "close"]
+    execution_price: float
+    volume: float
+    fee: float
+    slippage: float
+
+class BacktestMetrics(BaseModel):
+    final_equity: float
+    annualized_return: float | None = None
+    annualized_volatility: float | None = None
+    sharpe: float | None = None
+    max_drawdown: float | None = None
+    trades_count: int
+    win_rate: float | None = None
+
+class BacktestResult(BaseModel):
+    request: BacktestRequest
+    metrics: BacktestMetrics
+    trades: list[TradeRecord]
+    equity_curve: list[dict]
