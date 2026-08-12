@@ -28,3 +28,33 @@ class ResponseMeta(BaseModel):
     cache_hit: bool
     is_demo: bool = False
     warnings: list[str] = Field(default_factory=list)
+
+class ScoreRule(BaseModel):
+    label: str
+    points: int
+    triggered: bool
+    explanation: str
+
+class DiagnosticCategory(BaseModel):
+    score: int
+    rules: list[ScoreRule]
+
+class Diagnostics(BaseModel):
+    trend: DiagnosticCategory
+    momentum: DiagnosticCategory
+    volatility: DiagnosticCategory
+    drawdown: DiagnosticCategory
+
+class PerformanceMetrics(BaseModel):
+    annualized_return: float | None = None
+    annualized_volatility: float | None = None
+    downside: float | None = None
+    sharpe: float | None = None
+    sortino: float | None = None
+    beta: float | None = None
+    correlation: float | None = None
+    excess_return: float | None = None
+
+class AnalysisResult(BaseModel):
+    metrics: PerformanceMetrics
+    diagnostics: Diagnostics
