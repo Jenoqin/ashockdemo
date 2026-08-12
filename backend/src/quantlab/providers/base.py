@@ -2,6 +2,13 @@ from datetime import date
 from typing import Protocol
 from quantlab.models import Instrument, PriceBar
 
+class ProviderError(RuntimeError):
+    def __init__(self, provider: str, code: str, reason: str):
+        self.provider = provider
+        self.code = code
+        self.reason = reason
+        super().__init__(f"{provider}:{code}:{reason}")
+
 class MarketDataProvider(Protocol):
     name: str
     def search(self, query: str) -> list[Instrument]:
