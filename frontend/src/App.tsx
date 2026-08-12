@@ -3,6 +3,9 @@ import { useResearch } from './hooks/useResearch'
 import Header from './components/Header'
 import InstrumentHero from './components/InstrumentHero'
 import StatePanel from './components/StatePanel'
+import MarketChart from './components/MarketChart'
+import MetricGrid from './components/MetricGrid'
+import AssetProfile from './components/AssetProfile'
 import DataProvenance from './components/DataProvenance'
 import type { DateRangeKey } from './api/types'
 
@@ -77,10 +80,17 @@ export default function App() {
               </button>
             </div>
 
-            {/* Placeholder for MarketChart, MetricGrid, AssetProfile, BacktestLab */}
-            <div className="card" style={{ minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>
-              分析图表区域 (Task 9 & 10)
-            </div>
+            {bundle && (
+              <>
+                <MarketChart bars={bundle.market.data} analysis={bundle.analysis.data} />
+                <div style={{ marginTop: '24px' }}>
+                  <MetricGrid analysis={bundle.analysis.data} days={bundle.market.data.length} />
+                </div>
+                <div style={{ marginTop: '24px' }}>
+                  <AssetProfile profile={bundle.profile.data} />
+                </div>
+              </>
+            )}
 
             {bundle.market && <DataProvenance meta={bundle.market.meta} />}
           </>

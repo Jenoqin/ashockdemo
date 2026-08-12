@@ -15,6 +15,16 @@ vi.mock('../api/client', () => ({
   },
 }))
 
+vi.mock('echarts', () => ({
+  init: () => ({ setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn() }),
+}))
+
+vi.stubGlobal('ResizeObserver', class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+})
+
 describe('App', () => {
   afterEach(() => {
     cleanup()
