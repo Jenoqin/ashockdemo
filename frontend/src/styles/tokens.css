@@ -1,0 +1,13 @@
+:root {
+  --paper: #f5f1e8;
+  --surface: #fffdf7;
+  --ink: #24231f;
+  --muted: #777167;
+  --accent: #d55331;
+  --positive: #167a58;
+  --negative: #bd3f34;
+  --line: #d9d2c4;
+  --radius-lg: 22px;
+  --radius-md: 14px;
+  --shadow: 0 18px 60px rgb(70 55 35 / 8%);
+}
