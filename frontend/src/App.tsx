@@ -1,11 +1,13 @@
-import React from 'react'
+
 import { useResearch } from './hooks/useResearch'
+import { api } from './api/client'
 import Header from './components/Header'
 import InstrumentHero from './components/InstrumentHero'
 import StatePanel from './components/StatePanel'
 import MarketChart from './components/MarketChart'
 import MetricGrid from './components/MetricGrid'
 import AssetProfile from './components/AssetProfile'
+import BacktestLab from './components/BacktestLab'
 import DataProvenance from './components/DataProvenance'
 import type { DateRangeKey } from './api/types'
 
@@ -88,6 +90,17 @@ export default function App() {
                 </div>
                 <div style={{ marginTop: '24px' }}>
                   <AssetProfile profile={bundle.profile.data} />
+                </div>
+                <div style={{ marginTop: '24px' }}>
+                  <BacktestLab 
+                    code={code} 
+                    start={bundle.market.data[0]?.trade_date} 
+                    end={bundle.market.data[bundle.market.data.length - 1]?.trade_date} 
+                    onRun={async (req) => {
+                      const res = await api.runBacktest(req)
+                      return res.data
+                    }} 
+                  />
                 </div>
               </>
             )}

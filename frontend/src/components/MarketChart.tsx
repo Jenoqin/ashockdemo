@@ -79,7 +79,7 @@ export default function MarketChart({ bars, analysis, overlays = [] }: MarketCha
       {
         type: 'bar',
         name: '成交量',
-        data: volumes.map((v, i) => ({
+        data: volumes.map((v) => ({
           value: v[1],
           itemStyle: {
             color: v[2] === 1 ? '#D55331' : '#167A58'

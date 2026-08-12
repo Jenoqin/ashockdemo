@@ -8,15 +8,22 @@ from quantlab.services.backtest import BacktestService
 import akshare as ak
 import tushare as ts
 
+from quantlab.providers.demo_provider import DemoProvider
+
 def get_market_cache() -> MarketCache:
     settings = get_settings()
     return MarketCache(settings.database_path)
 
-def get_akshare_provider() -> AkShareProvider:
+def get_akshare_provider():
+    settings = get_settings()
+    if settings.demo_mode:
+        return DemoProvider()
     return AkShareProvider(ak)
 
-def get_tushare_provider() -> TushareProvider | None:
+def get_tushare_provider():
     settings = get_settings()
+    if settings.demo_mode:
+        return None
     if settings.tushare_token:
         ts.set_token(settings.tushare_token)
         return TushareProvider(ts.pro_api())

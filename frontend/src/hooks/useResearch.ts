@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { api, ResearchBundle } from '../api/client'
+import { api, type ResearchBundle } from '../api/client'
 import type { DateRangeKey, DateRange, Envelope, Instrument } from '../api/types'
 
 export type ResearchStatus = 'idle' | 'loading' | 'ready' | 'refreshing' | 'error'

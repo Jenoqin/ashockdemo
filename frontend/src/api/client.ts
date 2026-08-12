@@ -17,7 +17,7 @@ export interface ResearchBundle {
   profile: Envelope<AssetProfile>
 }
 
-const BASE_URL = 'http://127.0.0.1:8000'
+const BASE_URL = ''
 
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, options)

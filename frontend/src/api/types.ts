@@ -37,6 +37,7 @@ export interface Diagnostics {
   momentum: DiagnosticCategory
   volatility: DiagnosticCategory
   drawdown: DiagnosticCategory
+  [key: string]: any
 }
 
 export interface PerformanceMetrics {
@@ -48,6 +49,10 @@ export interface PerformanceMetrics {
   beta: number | null
   correlation: number | null
   excess_return: number | null
+  sharpe_ratio: number | null
+  sortino_ratio: number | null
+  max_drawdown: number | null
+  max_drawdown_duration: number | null
 }
 
 export interface AnalysisResult {

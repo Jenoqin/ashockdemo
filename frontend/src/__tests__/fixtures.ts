@@ -5,7 +5,6 @@ import type {
   AssetProfile,
   BacktestResult,
   ResponseMeta,
-  Envelope,
 } from '../api/types'
 
 export const meta: ResponseMeta = {
@@ -28,9 +27,13 @@ export const analysis: AnalysisResult = {
     downside: 0.1,
     sharpe: 0.5,
     sortino: 0.8,
-    beta: 1.1,
+    beta: 1.0,
     correlation: 0.9,
-    excess_return: 0.02
+    excess_return: 0.05,
+    sharpe_ratio: 1.2,
+    sortino_ratio: 1.5,
+    max_drawdown: 0.15,
+    max_drawdown_duration: 30
   },
   diagnostics: {
     trend: { score: 80, rules: [] },
