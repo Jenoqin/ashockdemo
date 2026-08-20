@@ -1,29 +1,31 @@
 import { useEffect, useRef, useState } from 'react'
 import * as echarts from 'echarts'
-import type { PriceBar, AnalysisResult } from '../api/types'
+import type { AnalysisResult, PriceBar } from '../api/types'
+
+type LessonKey = 'trend' | 'levels' | 'volume'
 
 interface MarketChartProps {
   bars: PriceBar[]
   analysis: AnalysisResult | null
   overlays?: string[]
+  lesson?: LessonKey
 }
 
-export default function MarketChart({ bars, analysis, overlays = [] }: MarketChartProps) {
+const overlayKeys = ['ma5', 'ma10', 'ma20', 'ma60', 'boll', 'macd', 'rsi']
+
+export default function MarketChart({ bars, analysis, overlays = [], lesson = 'trend' }: MarketChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<echarts.ECharts | null>(null)
   const [activeOverlays, setActiveOverlays] = useState<string[]>(overlays)
 
-  const toggleOverlay = (o: string) => {
-    setActiveOverlays(prev => {
-      // lower pane can only have one of macd, rsi
-      const lower = ['macd', 'rsi']
-      if (lower.includes(o)) {
-        const withoutLower = prev.filter(x => !lower.includes(x))
-        if (prev.includes(o)) return withoutLower
-        return [...withoutLower, o]
+  const toggleOverlay = (overlay: string) => {
+    setActiveOverlays((previous) => {
+      const lowerPane = ['macd', 'rsi']
+      if (lowerPane.includes(overlay)) {
+        const withoutLower = previous.filter((item) => !lowerPane.includes(item))
+        return previous.includes(overlay) ? withoutLower : [...withoutLower, overlay]
       }
-      if (prev.includes(o)) return prev.filter(x => x !== o)
-      return [...prev, o]
+      return previous.includes(overlay) ? previous.filter((item) => item !== overlay) : [...previous, overlay]
     })
   }
 
@@ -31,12 +33,8 @@ export default function MarketChart({ bars, analysis, overlays = [] }: MarketCha
     if (!containerRef.current) return
     const chart = echarts.init(containerRef.current)
     chartRef.current = chart
-
-    const observer = new ResizeObserver(() => {
-      chart.resize()
-    })
+    const observer = new ResizeObserver(() => chart.resize())
     observer.observe(containerRef.current)
-
     return () => {
       observer.disconnect()
       chart.dispose()
@@ -44,153 +42,156 @@ export default function MarketChart({ bars, analysis, overlays = [] }: MarketCha
   }, [])
 
   useEffect(() => {
-    if (!chartRef.current || !bars.length) return
+    if (!chartRef.current || !bars.length || !containerRef.current) return
 
-    const dates = bars.map(b => b.trade_date)
-    const ohlc = bars.map(b => [b.open, b.close, b.low, b.high])
-    const volumes = bars.map(b => [b.trade_date, b.volume, b.close > b.open ? 1 : -1])
-
+    const dates = bars.map((bar) => bar.trade_date)
+    const ohlc = bars.map((bar) => [bar.open, bar.close, bar.low, bar.high])
+    const compact = containerRef.current.clientWidth < 720
     const showLowerPane = activeOverlays.includes('macd') || activeOverlays.includes('rsi')
-    const gridLayout = showLowerPane
+    const downEnd = Math.max(1, Math.floor((bars.length - 1) * 0.22))
+    const flatStart = Math.max(downEnd + 1, Math.floor((bars.length - 1) * 0.28))
+    const flatEnd = Math.max(flatStart + 1, Math.floor((bars.length - 1) * 0.66))
+    const riseStart = Math.max(flatEnd + 1, Math.floor((bars.length - 1) * 0.78))
+
+    const grids = showLowerPane
       ? [
-          { left: '60px', right: '20px', top: '20px', height: '50%' }, // candlestick
-          { left: '60px', right: '20px', top: '55%', height: '15%' }, // volume
-          { left: '60px', right: '20px', top: '75%', height: '20%' }, // lower pane
+          { left: compact ? 46 : 54, right: 18, top: 22, height: '51%' },
+          { left: compact ? 46 : 54, right: 18, top: '58%', height: '12%' },
+          { left: compact ? 46 : 54, right: 18, top: '76%', height: '17%' },
         ]
       : [
-          { left: '60px', right: '20px', top: '20px', height: '60%' }, // candlestick
-          { left: '60px', right: '20px', top: '85%', height: '15%' }, // volume
+          { left: compact ? 46 : 54, right: 18, top: 22, height: '66%' },
+          { left: compact ? 46 : 54, right: 18, top: '76%', height: '16%' },
         ]
 
-    const series: any[] = [
+    const series: Record<string, unknown>[] = [
       {
         type: 'candlestick',
         name: 'K线',
         data: ohlc,
         itemStyle: {
-          color: '#D55331',
-          color0: '#167A58',
-          borderColor: '#D55331',
-          borderColor0: '#167A58'
+          color: '#d95842',
+          color0: '#15906b',
+          borderColor: '#d95842',
+          borderColor0: '#15906b',
         },
         xAxisIndex: 0,
-        yAxisIndex: 0
+        yAxisIndex: 0,
+        markArea: {
+          silent: true,
+          label: { show: lesson === 'trend' && !compact, position: 'insideTopLeft', fontSize: 12, lineHeight: 18, fontWeight: 650 },
+          data: [
+            [
+              { name: `下跌阶段  ${dates[0]} ～ ${dates[downEnd]}\n高位快速回落，市场情绪走弱`, xAxis: dates[0], itemStyle: { color: lesson === 'trend' ? 'rgba(198, 66, 54, .10)' : 'rgba(198, 66, 54, .035)' }, label: { color: '#ad3c35' } },
+              { xAxis: dates[downEnd] },
+            ],
+            [
+              { name: `震荡整理  ${dates[flatStart]} ～ ${dates[flatEnd]}\n低位反复，方向尚不清晰`, xAxis: dates[flatStart], itemStyle: { color: lesson === 'trend' ? 'rgba(209, 130, 19, .10)' : 'rgba(209, 130, 19, .035)' }, label: { color: '#b56f13' } },
+              { xAxis: dates[flatEnd] },
+            ],
+            [
+              { name: `回升阶段  ${dates[riseStart]} ～ ${dates[dates.length - 1]}\n高点和低点逐步抬高`, xAxis: dates[riseStart], itemStyle: { color: lesson === 'trend' ? 'rgba(20, 122, 91, .11)' : 'rgba(20, 122, 91, .04)' }, label: { color: '#147a5b' } },
+              { xAxis: dates[dates.length - 1] },
+            ],
+          ],
+        },
+        markPoint: lesson === 'levels' ? {
+          symbolSize: 42,
+          label: { color: '#fff', fontSize: 10, formatter: '{b}' },
+          data: [
+            { type: 'max', name: '高点', itemStyle: { color: '#c64236' } },
+            { type: 'min', name: '低点', itemStyle: { color: '#147a5b' } },
+          ],
+        } : undefined,
+        markLine: lesson === 'levels' ? {
+          symbol: 'none',
+          label: { formatter: '区间均价', color: '#746f67' },
+          lineStyle: { color: '#9f988f', type: 'dashed' },
+          data: [{ type: 'average' }],
+        } : undefined,
       },
       {
         type: 'bar',
         name: '成交量',
-        data: volumes.map((v) => ({
-          value: v[1],
+        data: bars.map((bar) => ({
+          value: bar.volume,
           itemStyle: {
-            color: v[2] === 1 ? '#D55331' : '#167A58'
-          }
+            color: bar.close >= bar.open ? '#d95842' : '#15906b',
+            opacity: lesson === 'volume' ? 1 : 0.62,
+          },
         })),
         xAxisIndex: 1,
-        yAxisIndex: 1
-      }
+        yAxisIndex: 1,
+      },
     ]
 
     if (analysis) {
-      const { diagnostics } = analysis
-      
-      const maColors: Record<string, string> = { ma5: '#c23531', ma10: '#2f4554', ma20: '#61a0a8', ma60: '#d48265' }
-      
+      const diagnostics = analysis.diagnostics
+      const maColors: Record<string, string> = { ma5: '#c64236', ma10: '#375a7f', ma20: '#8b6e43', ma60: '#76558f' }
+
       for (const overlay of activeOverlays) {
-        if (['ma5', 'ma10', 'ma20', 'ma60'].includes(overlay)) {
-          if (diagnostics[overlay]) {
-            series.push({
-              type: 'line',
-              name: overlay.toUpperCase(),
-              data: Object.values(diagnostics[overlay]),
-              smooth: true,
-              showSymbol: false,
-              lineStyle: { width: 1 },
-              itemStyle: { color: maColors[overlay] },
-              xAxisIndex: 0,
-              yAxisIndex: 0
-            })
-          }
-        } else if (overlay === 'boll') {
-          if (diagnostics.boll_upper && diagnostics.boll_lower && diagnostics.boll_mid) {
-            series.push(
-              { type: 'line', name: 'BOLL UPPER', data: Object.values(diagnostics.boll_upper), smooth: true, showSymbol: false, lineStyle: { width: 1, type: 'dashed' }, itemStyle: { color: '#ccc' }, xAxisIndex: 0, yAxisIndex: 0 },
-              { type: 'line', name: 'BOLL MID', data: Object.values(diagnostics.boll_mid), smooth: true, showSymbol: false, lineStyle: { width: 1 }, itemStyle: { color: '#aaa' }, xAxisIndex: 0, yAxisIndex: 0 },
-              { type: 'line', name: 'BOLL LOWER', data: Object.values(diagnostics.boll_lower), smooth: true, showSymbol: false, lineStyle: { width: 1, type: 'dashed' }, itemStyle: { color: '#ccc' }, xAxisIndex: 0, yAxisIndex: 0 }
-            )
-          }
-        } else if (overlay === 'macd') {
-          if (diagnostics.macd && diagnostics.macd_signal && diagnostics.macd_hist) {
-            series.push(
-              { type: 'line', name: 'MACD', data: Object.values(diagnostics.macd), smooth: true, showSymbol: false, xAxisIndex: 2, yAxisIndex: 2 },
-              { type: 'line', name: 'SIGNAL', data: Object.values(diagnostics.macd_signal), smooth: true, showSymbol: false, xAxisIndex: 2, yAxisIndex: 2 },
-              { type: 'bar', name: 'HIST', data: Object.values(diagnostics.macd_hist).map((v: any) => ({ value: v, itemStyle: { color: v > 0 ? '#D55331' : '#167A58' }})), xAxisIndex: 2, yAxisIndex: 2 }
-            )
-          }
-        } else if (overlay === 'rsi') {
-          if (diagnostics.rsi14) {
-            series.push({ type: 'line', name: 'RSI(14)', data: Object.values(diagnostics.rsi14), smooth: true, showSymbol: false, xAxisIndex: 2, yAxisIndex: 2 })
-          }
+        if (['ma5', 'ma10', 'ma20', 'ma60'].includes(overlay) && diagnostics[overlay]) {
+          series.push({ type: 'line', name: overlay.toUpperCase(), data: Object.values(diagnostics[overlay]), smooth: true, showSymbol: false, lineStyle: { width: 1.25, color: maColors[overlay] }, xAxisIndex: 0, yAxisIndex: 0 })
+        }
+        if (overlay === 'boll' && diagnostics.boll_upper && diagnostics.boll_lower && diagnostics.boll_mid) {
+          series.push(
+            { type: 'line', name: 'BOLL UPPER', data: Object.values(diagnostics.boll_upper), showSymbol: false, lineStyle: { width: 1, type: 'dashed', color: '#a9a198' }, xAxisIndex: 0, yAxisIndex: 0 },
+            { type: 'line', name: 'BOLL MID', data: Object.values(diagnostics.boll_mid), showSymbol: false, lineStyle: { width: 1, color: '#6f6a64' }, xAxisIndex: 0, yAxisIndex: 0 },
+            { type: 'line', name: 'BOLL LOWER', data: Object.values(diagnostics.boll_lower), showSymbol: false, lineStyle: { width: 1, type: 'dashed', color: '#a9a198' }, xAxisIndex: 0, yAxisIndex: 0 },
+          )
+        }
+        if (overlay === 'macd' && diagnostics.macd && diagnostics.macd_signal && diagnostics.macd_hist) {
+          series.push(
+            { type: 'line', name: 'MACD', data: Object.values(diagnostics.macd), showSymbol: false, xAxisIndex: 2, yAxisIndex: 2 },
+            { type: 'line', name: 'SIGNAL', data: Object.values(diagnostics.macd_signal), showSymbol: false, xAxisIndex: 2, yAxisIndex: 2 },
+            { type: 'bar', name: 'HIST', data: Object.values(diagnostics.macd_hist), xAxisIndex: 2, yAxisIndex: 2 },
+          )
+        }
+        if (overlay === 'rsi' && diagnostics.rsi14) {
+          series.push({ type: 'line', name: 'RSI(14)', data: Object.values(diagnostics.rsi14), showSymbol: false, xAxisIndex: 2, yAxisIndex: 2 })
         }
       }
     }
 
-    const option = {
+    chartRef.current.setOption({
       animation: bars.length <= 1000,
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'cross' }
-      },
+      textStyle: { fontFamily: 'Inter, PingFang SC, Microsoft YaHei, sans-serif', color: '#59544d' },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, borderColor: '#d8d2c8', backgroundColor: 'rgba(255, 254, 250, .96)' },
       axisPointer: { link: [{ xAxisIndex: 'all' }] },
       dataZoom: [
         { type: 'inside', xAxisIndex: showLowerPane ? [0, 1, 2] : [0, 1], start: 0, end: 100 },
-        { type: 'slider', xAxisIndex: showLowerPane ? [0, 1, 2] : [0, 1], start: 0, end: 100, bottom: '2%' }
+        { type: 'slider', show: false, xAxisIndex: showLowerPane ? [0, 1, 2] : [0, 1], start: 0, end: 100 },
       ],
-      grid: gridLayout,
-      xAxis: gridLayout.map((_, i) => ({
-        type: 'category',
-        data: dates,
-        gridIndex: i,
-        scale: true,
-        boundaryGap: false,
-        axisLine: { onZero: false },
+      grid: grids,
+      xAxis: grids.map((_, index) => ({
+        type: 'category', data: dates, gridIndex: index, scale: true, boundaryGap: false,
+        axisLine: { lineStyle: { color: '#cfc9bf' } },
+        axisTick: { show: false },
+        axisLabel: { color: '#746f67', fontSize: 11, hideOverlap: true },
         splitLine: { show: false },
-        show: i === gridLayout.length - 1, // Only show label on the bottom-most axis
+        show: index === grids.length - 1,
       })),
-      yAxis: gridLayout.map((_, i) => ({
-        type: 'value',
-        scale: true,
-        gridIndex: i,
-        splitLine: { show: i === 0 }
+      yAxis: grids.map((_, index) => ({
+        type: 'value', scale: true, gridIndex: index,
+        axisLine: { show: false }, axisTick: { show: false },
+        axisLabel: { color: '#746f67', fontSize: 11 },
+        splitLine: { show: index === 0, lineStyle: { color: '#e9e5de' } },
       })),
-      series
-    }
-
-    chartRef.current.setOption(option, true)
-  }, [bars, analysis, activeOverlays])
+      series,
+    }, true)
+  }, [bars, analysis, activeOverlays, lesson])
 
   return (
-    <div className="card" data-testid="market-chart">
-      <div style={{ marginBottom: '16px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        {['ma5', 'ma10', 'ma20', 'ma60', 'boll', 'macd', 'rsi'].map(o => (
-          <button
-            key={o}
-            onClick={() => toggleOverlay(o)}
-            style={{
-              padding: '4px 12px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--line)',
-              background: activeOverlays.includes(o) ? 'var(--ink)' : 'var(--surface)',
-              color: activeOverlays.includes(o) ? 'var(--surface)' : 'var(--ink)',
-              cursor: 'pointer',
-              fontSize: '12px',
-              textTransform: 'uppercase'
-            }}
-          >
-            {o}
-          </button>
-        ))}
-      </div>
-      <div ref={containerRef} style={{ width: '100%', height: '600px' }} />
+    <div className="market-chart" data-testid="market-chart">
+      <div ref={containerRef} className="chart-canvas" />
+      <details className="indicator-controls">
+        <summary>高级指标（可展开）</summary>
+        <div className="overlay-controls" aria-label="技术指标叠加">
+          {overlayKeys.map((overlay) => (
+            <button key={overlay} type="button" onClick={() => toggleOverlay(overlay)} className={activeOverlays.includes(overlay) ? 'is-active' : ''} aria-pressed={activeOverlays.includes(overlay)}>{overlay.toUpperCase()}</button>
+          ))}
+        </div>
+      </details>
     </div>
   )
 }
