@@ -10,3 +10,5 @@ backend/data/
 frontend/node_modules/
 frontend/dist/
 frontend/playwright-report/
+data/
+*.egg-info/
