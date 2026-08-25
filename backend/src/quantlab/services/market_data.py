@@ -29,17 +29,21 @@ class MarketDataService:
             ranges = self.cache.missing_ranges(code, start, end)
             
         fetched_bars = []
+        successful_ranges = []
         primary_failed = False
         
         for r_start, r_end in ranges:
             try:
                 new_bars = self.primary.get_daily(code, r_start, r_end)
+                if not new_bars:
+                    raise ProviderError(self.primary.name, code, "Empty response")
                 val_warnings = validate_bars(new_bars)
                 fatal = any(w.startswith("INVALID_OHLC") or w.startswith("DUPLICATE") for w in val_warnings)
                 if fatal:
                     raise ProviderError(self.primary.name, code, "Fatal validation errors")
                 fetched_bars.extend(new_bars)
                 sources.append(self.primary.name)
+                successful_ranges.append((r_start, r_end))
             except ProviderError:
                 primary_failed = True
                 warnings.append("PRIMARY_PROVIDER_FAILED")
@@ -47,19 +51,22 @@ class MarketDataService:
                 if self.fallback:
                     try:
                         fb_bars = self.fallback.get_daily(code, r_start, r_end)
+                        if not fb_bars:
+                            raise ProviderError(self.fallback.name, code, "Empty response")
                         fb_val_warnings = validate_bars(fb_bars)
                         fb_fatal = any(w.startswith("INVALID_OHLC") or w.startswith("DUPLICATE") for w in fb_val_warnings)
                         if fb_fatal:
                             raise ProviderError(self.fallback.name, code, "Fatal validation errors in fallback")
                         fetched_bars.extend(fb_bars)
                         sources.append(self.fallback.name)
+                        successful_ranges.append((r_start, r_end))
                         primary_failed = False
                     except ProviderError:
                         pass
         
         if fetched_bars:
             self.cache.upsert_bars(fetched_bars)
-            for r_start, r_end in ranges:
+            for r_start, r_end in successful_ranges:
                 self.cache.mark_synced(code, r_start, r_end)
         
         if refresh and self.fallback and not primary_failed:
@@ -100,6 +107,7 @@ class MarketDataService:
                 sources=sources,
                 fetched_at=datetime.now(timezone.utc),
                 cache_hit=is_cache_hit,
+                is_demo=self.primary.name.lower() == "demo",
                 warnings=warnings
             )
         )

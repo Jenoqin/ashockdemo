@@ -46,18 +46,31 @@ class Diagnostics(BaseModel):
     drawdown: DiagnosticCategory
 
 class PerformanceMetrics(BaseModel):
+    period_return: float | None = None
     annualized_return: float | None = None
     annualized_volatility: float | None = None
     downside: float | None = None
     sharpe: float | None = None
     sortino: float | None = None
+    max_drawdown: float | None = None
+    max_drawdown_duration: int | None = None
+    current_drawdown: float | None = None
     beta: float | None = None
     correlation: float | None = None
     excess_return: float | None = None
 
+class AnalysisSeries(BaseModel):
+    dates: list[date] = Field(default_factory=list)
+    cumulative_return: list[float | None] = Field(default_factory=list)
+    benchmark_return: list[float | None] = Field(default_factory=list)
+    drawdown: list[float | None] = Field(default_factory=list)
+    rolling_volatility: list[float | None] = Field(default_factory=list)
+    rolling_sharpe: list[float | None] = Field(default_factory=list)
+
 class AnalysisResult(BaseModel):
     metrics: PerformanceMetrics
     diagnostics: Diagnostics
+    series: AnalysisSeries = Field(default_factory=AnalysisSeries)
 
 class BacktestRequest(BaseModel):
     code: str
@@ -136,6 +149,7 @@ class EquityProfile(BaseModel):
     pb: float | None = None
     total_market_cap: float | None = None
     float_market_cap: float | None = None
+    turnover_rate: float | None = None
     financial_periods: list[FinancialPeriod] = Field(default_factory=list)
     availability: Availability
 

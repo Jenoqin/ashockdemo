@@ -11,6 +11,13 @@ def test_invalid_code_has_stable_error_shape(client):
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "INVALID_INSTRUMENT_CODE"
 
+def test_instrument_profile_has_provenance(client):
+    response = client.get("/api/instruments/512480.SH/profile")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["asset_type"] == "etf"
+    assert body["meta"]["sources"] == ["fake"]
+
 def test_backtest_rejects_invalid_windows(client):
     response = client.post("/api/backtests/ma-cross", json={"code":"512480.SH", "fast_window":60, "slow_window":20})
     assert response.status_code == 422

@@ -2,7 +2,9 @@ import math
 import numpy as np
 import pandas as pd
 import pytest
-from quantlab.services.analytics import max_drawdown, performance_metrics, technical_frame, score_diagnostics
+from datetime import date, datetime, timezone
+from quantlab.models import PriceBar
+from quantlab.services.analytics import analyze_market, max_drawdown, performance_metrics, technical_frame, score_diagnostics
 
 def test_max_drawdown_uses_running_peak():
     drawdown, duration = max_drawdown(pd.Series([1.0, 1.2, 0.9, 1.1, 0.8]))
@@ -25,3 +27,18 @@ def test_scores_expose_points_and_triggered_rules():
     assert 0 <= scores.trend.score <= 100
     assert sum(rule.points for rule in scores.trend.rules if rule.triggered) == scores.trend.score
     assert {"trend", "momentum", "volatility", "drawdown"} == set(scores.model_dump())
+
+def test_analysis_exposes_beginner_metrics_and_linked_series():
+    bars = [
+        PriceBar(
+            code="512480.SH", trade_date=date(2026, 1, day), open=close,
+            high=close, low=close, close=close, volume=1000, source="demo",
+            fetched_at=datetime.now(timezone.utc),
+        )
+        for day, close in enumerate([1.0, 1.1, 0.9, 1.2], start=1)
+    ]
+    result = analyze_market(bars)
+    assert result.metrics.period_return == pytest.approx(0.2)
+    assert result.metrics.max_drawdown == pytest.approx(0.9 / 1.1 - 1)
+    assert len(result.series.dates) == len(bars)
+    assert result.series.drawdown[2] == pytest.approx(0.9 / 1.1 - 1)

@@ -1,11 +1,14 @@
 import sqlite3
 from datetime import date
+from pathlib import Path
 from typing import List, Tuple
 from quantlab.models import PriceBar
 
 class MarketCache:
     def __init__(self, db_path: str):
         self.db_path = str(db_path)
+        if self.db_path != ":memory:":
+            Path(self.db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     def _init_db(self):

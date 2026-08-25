@@ -16,11 +16,11 @@ vi.stubGlobal('ResizeObserver', class {
   disconnect() {}
 })
 
-it('links candlestick and volume to the same zoom range', () => {
-  render(<MarketChart bars={bars} analysis={analysis} overlays={['ma20', 'macd']} />)
+it('links price context and drawdown to the same date axis', () => {
+  render(<MarketChart bars={bars} analysis={analysis} metric="drawdown" instrumentName="半导体 ETF" />)
   const option = mockedSetOption.mock.calls.at(-1)?.[0]
-  expect(option.series.some((item: { type: string }) => item.type === 'candlestick')).toBe(true)
-  expect(option.dataZoom).toHaveLength(2)
+  expect(option.series).toHaveLength(2)
+  expect(option.series[1].name).toBe('回撤')
   expect(option.axisPointer.link).toEqual([{ xAxisIndex: 'all' }])
 })
 

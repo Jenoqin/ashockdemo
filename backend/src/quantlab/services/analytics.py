@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from typing import Tuple, Optional
-from quantlab.models import Diagnostics, DiagnosticCategory, ScoreRule, PerformanceMetrics, AnalysisResult
+from quantlab.models import AnalysisResult, AnalysisSeries, DiagnosticCategory, Diagnostics, PerformanceMetrics, ScoreRule
 
 def max_drawdown(series: pd.Series) -> Tuple[float, int]:
     if len(series) == 0:
@@ -21,7 +21,7 @@ def max_drawdown(series: pd.Series) -> Tuple[float, int]:
             current_duration += 1
         if current_duration > max_duration:
             max_duration = current_duration
-            
+
     return float(max_dd) if not pd.isna(max_dd) else 0.0, max_duration
 
 def performance_metrics(returns: pd.Series, risk_free_rate: float = 0.02) -> PerformanceMetrics:
@@ -31,7 +31,7 @@ def performance_metrics(returns: pd.Series, risk_free_rate: float = 0.02) -> Per
     ann_ret = (1 + returns.dropna()).prod() ** (252 / len(returns.dropna())) - 1
     ann_vol = returns.std(ddof=1) * np.sqrt(252)
     downside = returns[returns < 0].std(ddof=1) * np.sqrt(252)
-    
+
     sharpe = (ann_ret - risk_free_rate) / ann_vol if ann_vol > 0 else None
     sortino = (ann_ret - risk_free_rate) / downside if downside > 0 else None
     
@@ -171,10 +171,27 @@ def analyze_market(bars: list, benchmark_bars=None, risk_free_rate: float = 0.02
         return AnalysisResult(metrics=PerformanceMetrics(), diagnostics=score_diagnostics(pd.DataFrame()))
         
     df = pd.DataFrame([b.model_dump() for b in bars])
-    metrics = performance_metrics(df["close"].pct_change(), risk_free_rate=risk_free_rate)
+    returns = df["close"].pct_change()
+    metrics = performance_metrics(returns, risk_free_rate=risk_free_rate)
+    metrics.period_return = float(df["close"].iloc[-1] / df["close"].iloc[0] - 1)
+    metrics.max_drawdown, metrics.max_drawdown_duration = max_drawdown(df["close"])
+    running_max = df["close"].cummax()
+    drawdown = (df["close"] - running_max) / running_max
+    metrics.current_drawdown = float(drawdown.iloc[-1])
+
+    cumulative_return = df["close"] / df["close"].iloc[0] - 1
+    rolling_volatility = returns.rolling(20).std(ddof=1) * np.sqrt(252)
+    rolling_return = (1 + returns).rolling(60).apply(np.prod, raw=True) ** (252 / 60) - 1
+    rolling_sharpe = (rolling_return - risk_free_rate) / (returns.rolling(60).std(ddof=1) * np.sqrt(252))
+    benchmark_return = pd.Series([np.nan] * len(df), index=df.index, dtype=float)
     
     if benchmark_bars:
         bench_df = pd.DataFrame([b.model_dump() for b in benchmark_bars])
+        benchmark_by_date = bench_df.set_index("trade_date")["close"]
+        aligned_benchmark = df["trade_date"].map(benchmark_by_date)
+        first_valid = aligned_benchmark.first_valid_index()
+        if first_valid is not None:
+            benchmark_return = aligned_benchmark / aligned_benchmark.loc[first_valid] - 1
         # Inner join returns by trade date
         asset_ret = df.set_index("trade_date")["close"].pct_change()
         bench_ret = bench_df.set_index("trade_date")["close"].pct_change()
@@ -188,8 +205,22 @@ def analyze_market(bars: list, benchmark_bars=None, risk_free_rate: float = 0.02
             asset_cum = (1 + overlap["asset"]).prod() - 1
             bench_cum = (1 + overlap["bench"]).prod() - 1
             metrics.excess_return = float(asset_cum - bench_cum)
-            
+
     frame = technical_frame(df["close"])
     diagnostics = score_diagnostics(frame)
-    
-    return AnalysisResult(metrics=metrics, diagnostics=diagnostics)
+
+    def optional_values(series: pd.Series) -> list[float | None]:
+        return [None if pd.isna(value) else float(value) for value in series]
+
+    return AnalysisResult(
+        metrics=metrics,
+        diagnostics=diagnostics,
+        series=AnalysisSeries(
+            dates=df["trade_date"].tolist(),
+            cumulative_return=optional_values(cumulative_return),
+            benchmark_return=optional_values(benchmark_return),
+            drawdown=optional_values(drawdown),
+            rolling_volatility=optional_values(rolling_volatility),
+            rolling_sharpe=optional_values(rolling_sharpe),
+        ),
+    )

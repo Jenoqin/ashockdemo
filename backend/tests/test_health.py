@@ -7,6 +7,6 @@ def test_health_reports_service_status():
     assert response.json() == {
         "status": "ok",
         "service": "quantlab-api",
-        "primary_provider": "akshare",
+        "primary_provider": "AkShare",
         "fallback_enabled": False,
     }

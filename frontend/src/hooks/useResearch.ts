@@ -32,10 +32,17 @@ function getRangeDates(key: DateRangeKey): DateRange {
     start.setFullYear(2000)
   }
 
+  const formatLocalDate = (value: Date) => {
+    const year = value.getFullYear()
+    const month = String(value.getMonth() + 1).padStart(2, '0')
+    const day = String(value.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
   return {
     key,
-    start: start.toISOString().split('T')[0],
-    end: end.toISOString().split('T')[0]
+    start: formatLocalDate(start),
+    end: formatLocalDate(end)
   }
 }
 
@@ -47,6 +54,7 @@ export function useResearch(): UseResearchReturn {
   const [bundle, setBundle] = useState<ResearchBundle | null>(null)
   
   const abortControllerRef = useRef<AbortController | null>(null)
+  const requestIdRef = useRef(0)
 
   useEffect(() => {
     let isMounted = true
@@ -55,19 +63,21 @@ export function useResearch(): UseResearchReturn {
     }
     const controller = new AbortController()
     abortControllerRef.current = controller
+    const requestId = ++requestIdRef.current
 
     const fetchData = async () => {
       setStatus(bundle ? 'refreshing' : 'loading')
       setError(null)
       try {
         const dates = getRangeDates(range)
-        const result = await api.loadResearch(code, dates)
-        if (isMounted) {
+        const result = await api.loadResearch(code, dates, controller.signal)
+        if (isMounted && requestId === requestIdRef.current) {
           setBundle(result)
           setStatus('ready')
         }
       } catch (err: any) {
-        if (isMounted) {
+        if (err?.name === 'AbortError') return
+        if (isMounted && requestId === requestIdRef.current) {
           setError(err.message || '加载数据失败')
           setStatus('error')
         }

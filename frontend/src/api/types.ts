@@ -41,24 +41,36 @@ export interface Diagnostics {
 }
 
 export interface PerformanceMetrics {
+  period_return: number | null
   annualized_return: number | null
   annualized_volatility: number | null
   downside: number | null
   sharpe: number | null
   sortino: number | null
+  max_drawdown: number | null
+  max_drawdown_duration: number | null
+  current_drawdown: number | null
   beta: number | null
   correlation: number | null
   excess_return: number | null
-  sharpe_ratio: number | null
-  sortino_ratio: number | null
-  max_drawdown: number | null
-  max_drawdown_duration: number | null
+}
+
+export interface AnalysisSeries {
+  dates: string[]
+  cumulative_return: Array<number | null>
+  benchmark_return: Array<number | null>
+  drawdown: Array<number | null>
+  rolling_volatility: Array<number | null>
+  rolling_sharpe: Array<number | null>
 }
 
 export interface AnalysisResult {
   metrics: PerformanceMetrics
   diagnostics: Diagnostics
+  series: AnalysisSeries
 }
+
+export type MetricKey = 'return' | 'volatility' | 'drawdown' | 'sharpe'
 
 export interface Availability {
   status: 'available' | 'unavailable'
@@ -107,6 +119,7 @@ export interface EquityProfile {
   pb: number | null
   total_market_cap: number | null
   float_market_cap: number | null
+  turnover_rate: number | null
   financial_periods: FinancialPeriod[]
   availability: Availability
 }

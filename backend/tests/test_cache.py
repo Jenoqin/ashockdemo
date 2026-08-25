@@ -21,6 +21,11 @@ def test_cache_upserts_and_returns_sorted_bars(tmp_path):
     rows = cache.get_bars("512480.SH", date(2026, 1, 1), date(2026, 1, 3))
     assert [(row.trade_date.day, row.close) for row in rows] == [(2, 1.28), (3, 1.31)]
 
+def test_cache_creates_missing_parent_directory(tmp_path):
+    db_path = tmp_path / "nested" / "cache" / "test.db"
+    MarketCache(db_path)
+    assert db_path.is_file()
+
 def test_missing_ranges_subtracts_synced_intervals(tmp_path):
     cache = MarketCache(tmp_path / "test.db")
     cache.mark_synced("512480.SH", date(2026, 1, 3), date(2026, 1, 7))

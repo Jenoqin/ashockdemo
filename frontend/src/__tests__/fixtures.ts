@@ -22,25 +22,33 @@ export const bars: PriceBar[] = [
 
 export const analysis: AnalysisResult = {
   metrics: {
+    period_return: 0.084,
     annualized_return: 0.1,
     annualized_volatility: 0.15,
     downside: 0.1,
     sharpe: 0.5,
     sortino: 0.8,
+    max_drawdown: -0.15,
+    max_drawdown_duration: 30,
+    current_drawdown: -0.03,
     beta: 1.0,
     correlation: 0.9,
-    excess_return: 0.05,
-    sharpe_ratio: 1.2,
-    sortino_ratio: 1.5,
-    max_drawdown: 0.15,
-    max_drawdown_duration: 30
+    excess_return: 0.05
   },
   diagnostics: {
     trend: { score: 80, rules: [] },
     momentum: { score: 60, rules: [] },
     volatility: { score: 90, rules: [] },
     drawdown: { score: 70, rules: [] }
-  }
+  },
+  series: {
+    dates: bars.map((bar) => bar.trade_date),
+    cumulative_return: [0, 0.016],
+    benchmark_return: [0, 0.01],
+    drawdown: [0, 0],
+    rolling_volatility: [null, 0.15],
+    rolling_sharpe: [null, 0.5],
+  },
 }
 
 export const instrument: Instrument = {
@@ -83,6 +91,7 @@ export const equityProfile: AssetProfile = {
     pb: 10,
     total_market_cap: 2000000000000,
     float_market_cap: 2000000000000,
+    turnover_rate: 0.01,
     financial_periods: [
       { report_date: '2026-03-31', revenue: 30000000000, revenue_yoy: 0.15, net_profit: 15000000000, net_profit_yoy: 0.2, roe: 0.08, gross_margin: 0.9, net_margin: 0.5, debt_ratio: 0.2 }
     ],

@@ -25,3 +25,32 @@ def test_equity_profile_contains_report_dates():
     assert profile.asset_type == "equity"
     assert profile.equity.financial_periods[0].report_date
     assert profile.etf is None
+
+
+class PrimaryPartialProvider(FakeProfileProvider):
+    name = "AkShare"
+
+    def get_equity_profile(self, code):
+        return {"industry": "主源行业", "pe": None, "financial_periods": []}
+
+
+class FallbackProfileProvider(FakeProfileProvider):
+    name = "Tushare Pro"
+
+    def get_equity_profile(self, code):
+        return {
+            "industry": "备用行业",
+            "pe": 18.0,
+            "pb": 2.0,
+            "total_market_cap": 100.0,
+            "financial_periods": [{"report_date": date(2026, 3, 31), "revenue": 1.0}],
+        }
+
+
+def test_profile_keeps_akshare_values_and_only_fills_missing_fields_from_tushare():
+    service = AssetService(PrimaryPartialProvider(), FallbackProfileProvider())
+    profile = service.get_profile("600519.SH")
+    assert profile.equity.industry == "主源行业"
+    assert profile.equity.pe == 18.0
+    assert profile.equity.financial_periods[0].report_date == date(2026, 3, 31)
+    assert service.profile_sources("600519.SH") == ["AkShare", "Tushare Pro"]
