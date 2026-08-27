@@ -3,6 +3,7 @@ export type AssetType = 'etf' | 'equity'
 export interface Instrument {
   code: string
   name: string
+  full_name: string | null
   asset_type: AssetType
   exchange: 'SH' | 'SZ' | 'BJ'
 }
@@ -62,6 +63,16 @@ export interface AnalysisSeries {
   drawdown: Array<number | null>
   rolling_volatility: Array<number | null>
   rolling_sharpe: Array<number | null>
+  ma20: Array<number | null>
+  ma60: Array<number | null>
+  macd: Array<number | null>
+  macd_signal: Array<number | null>
+  macd_hist: Array<number | null>
+  rsi14: Array<number | null>
+  boll_upper: Array<number | null>
+  boll_mid: Array<number | null>
+  boll_lower: Array<number | null>
+  atr14_percent: Array<number | null>
 }
 
 export interface AnalysisResult {
@@ -71,6 +82,8 @@ export interface AnalysisResult {
 }
 
 export type MetricKey = 'return' | 'volatility' | 'drawdown' | 'sharpe'
+export type LearningPage = 'performance' | 'technical'
+export type TechnicalMetricKey = 'trend' | 'momentum' | 'volatility'
 
 export interface Availability {
   status: 'available' | 'unavailable'
@@ -194,7 +207,7 @@ export interface ApiError {
   action?: string
 }
 
-export type DateRangeKey = '3m' | '6m' | '1y' | '3y' | 'all'
+export type DateRangeKey = '1w' | '1m' | '3m' | '6m' | '1y' | '3y' | 'all'
 
 export interface DateRange {
   start: string

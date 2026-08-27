@@ -11,6 +11,11 @@ def test_invalid_code_has_stable_error_shape(client):
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "INVALID_INSTRUMENT_CODE"
 
+def test_equity_instrument_exposes_formal_company_name(client):
+    response = client.get("/api/instruments/600519.SH")
+    assert response.status_code == 200
+    assert response.json()["data"]["full_name"] == "贵州茅台酒股份有限公司"
+
 def test_instrument_profile_has_provenance(client):
     response = client.get("/api/instruments/512480.SH/profile")
     assert response.status_code == 200

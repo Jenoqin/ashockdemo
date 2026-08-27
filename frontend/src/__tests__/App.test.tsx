@@ -36,23 +36,66 @@ describe('App', () => {
     vi.mocked(api.searchInstruments).mockResolvedValue({ data: [], meta: researchBundle.instrument.meta })
   })
 
-  it('renders the research product identity and disclaimer', () => {
+  it('renders the research product identity and disclaimer', async () => {
     render(<App />)
     expect(screen.getByRole('heading', { name: '量研手记' })).toBeInTheDocument()
     expect(screen.getByText('仅供个人研究学习，不构成投资建议')).toBeInTheDocument()
+    await screen.findByRole('heading', { name: /半导体 ETF/ })
+    expect(screen.getByRole('option', { name: '近1周' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '近1月' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '全部' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: '近5年' })).not.toBeInTheDocument()
   })
 
   it('loads the default ETF and shows provenance', async () => {
     render(<App />)
     expect(await screen.findByRole('heading', { name: /半导体 ETF/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /区间收益/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '近1年' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('group', { name: '观察区间' }).closest('.analysis-toolbar')).not.toBeNull()
+    expect(screen.getByRole('group', { name: '观察区间' }).closest('.chart-panel')).toBeNull()
+    expect(screen.queryByRole('button', { name: '看图' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '看解释' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '图表' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(screen.getByRole('button', { name: '指标解释' }))
+    expect(screen.getByRole('button', { name: '指标解释' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('区间收益解释')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '怎么看这四项指标？' })).toBeInTheDocument()
+    const guideButton = screen.getByRole('button', { name: '展开指南' })
+    expect(guideButton).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText(/区间收益为正时，还要结合最大回撤和波动/)).not.toBeInTheDocument()
+    await userEvent.click(guideButton)
+    expect(screen.getByRole('button', { name: '收起指南' })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText(/区间收益为正时，还要结合最大回撤和波动/)).toBeInTheDocument()
     expect(screen.getByText('AkShare')).toBeInTheDocument()
     expect(screen.getAllByText(/更新于/).length).toBeGreaterThan(0)
     expect(screen.getByText('基础资料')).toBeInTheDocument()
   })
 
+  it('keeps technical-state and performance scoring on separate learning pages', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: /半导体 ETF/ })
+
+    expect(screen.queryByText('本页只评历史风险收益。')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '展开指南' }))
+    expect(screen.getByText('本页只评历史风险收益。')).toBeInTheDocument()
+    expect(screen.getAllByText('学习分 60 / 100')).toHaveLength(4)
+
+    await userEvent.click(screen.getByRole('button', { name: /技术状态课/ }))
+
+    expect(screen.getByText('技术状态课 · 当前体征')).toBeInTheDocument()
+    expect(screen.getByText('本页只评当前技术状态。')).toBeInTheDocument()
+    expect(screen.getByText(/趋势 80 分、动量 60 分、波动状态 90 分/)).toBeInTheDocument()
+    expect(screen.getByTestId('technical-chart')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /动量状态/ }))
+    expect(screen.getByText('RSI 14')).toBeInTheDocument()
+    expect(screen.getByText(/“超买”不等于马上下跌/)).toBeInTheDocument()
+  })
+
   it('requires choosing a search result before changing the instrument', async () => {
     vi.mocked(api.searchInstruments).mockResolvedValueOnce({
-      data: [{ code: '600519.SH', name: '贵州茅台', asset_type: 'equity', exchange: 'SH' }],
+      data: [{ code: '600519.SH', name: '贵州茅台', full_name: '贵州茅台酒股份有限公司', asset_type: 'equity', exchange: 'SH' }],
       meta: researchBundle.instrument.meta,
     })
     render(<App />)
@@ -64,6 +107,7 @@ describe('App', () => {
     expect(api.loadResearch).toHaveBeenCalledTimes(1)
 
     await userEvent.click(screen.getByRole('option', { name: /贵州茅台/ }))
+    expect(input).toHaveValue('贵州茅台酒股份有限公司 600519.SH')
     await waitFor(() => expect(api.loadResearch).toHaveBeenLastCalledWith('600519.SH', expect.any(Object), expect.any(AbortSignal)))
   })
 
@@ -95,12 +139,11 @@ describe('App', () => {
     render(<App />)
     await screen.findByRole('heading', { name: /半导体 ETF/ })
 
-    const range = screen.getByLabelText('观察区间')
-    await userEvent.selectOptions(range, '3m')
+    await userEvent.click(screen.getByRole('button', { name: '近3月' }))
     await screen.findByText('正在更新观察区间…')
     expect(screen.queryByText('+8.4%')).not.toBeInTheDocument()
 
-    await userEvent.selectOptions(range, '6m')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: '观察区间' }), '6m')
     await waitFor(() => expect(pending).toHaveLength(2))
     expect(pending[0].signal?.aborted).toBe(true)
 

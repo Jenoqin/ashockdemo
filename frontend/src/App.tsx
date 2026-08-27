@@ -1,10 +1,15 @@
+import { useState } from 'react'
 import { useResearch } from './hooks/useResearch'
 import Header from './components/Header'
 import ResearchWorkspace from './components/ResearchWorkspace'
+import TechnicalWorkspace from './components/TechnicalWorkspace'
+import AnalysisRangeToolbar from './components/AnalysisRangeToolbar'
 import StatePanel from './components/StatePanel'
+import type { LearningPage } from './api/types'
 
 export default function App() {
   const { status, error, bundle, range, setCode, setRange, search } = useResearch()
+  const [page, setPage] = useState<LearningPage>('performance')
 
   const meta = bundle?.market.meta
 
@@ -13,19 +18,34 @@ export default function App() {
       <Header
         onSearch={async (query) => (await search(query)).data}
         onSelect={(instrument) => setCode(instrument.code)}
-        range={range}
-        onRangeChange={setRange}
+        page={page}
+        onPageChange={setPage}
       />
       <main>
         <StatePanel status={status} error={error} />
+        {bundle && status === 'refreshing' ? (
+          <div className="refreshing-range-shell"><AnalysisRangeToolbar range={range} onChange={setRange} /></div>
+        ) : null}
         {bundle && status !== 'refreshing' ? (
-          <ResearchWorkspace
-            instrument={bundle.instrument.data}
-            analysis={bundle.analysis.data}
-            bars={bundle.market.data}
-            profile={bundle.profile.data}
-            profileMeta={bundle.profile.meta}
-          />
+          page === 'performance' ? (
+            <ResearchWorkspace
+              instrument={bundle.instrument.data}
+              analysis={bundle.analysis.data}
+              bars={bundle.market.data}
+              profile={bundle.profile.data}
+              profileMeta={bundle.profile.meta}
+              range={range}
+              onRangeChange={setRange}
+            />
+          ) : (
+            <TechnicalWorkspace
+              instrument={bundle.instrument.data}
+              analysis={bundle.analysis.data}
+              bars={bundle.market.data}
+              range={range}
+              onRangeChange={setRange}
+            />
+          )
         ) : null}
       </main>
       <footer>

@@ -1,113 +1,263 @@
 from datetime import date, datetime, timezone
+from threading import Lock
 from typing import List, Optional
+
 from pydantic import BaseModel
-from quantlab.models import PriceBar, ResponseMeta
+
 from quantlab.cache import MarketCache
-from quantlab.providers.base import MarketDataProvider, ProviderError, normalize_code
 from quantlab.errors import DataUnavailableError
+from quantlab.models import PriceBar, ResponseMeta
+from quantlab.providers.base import MarketDataProvider, ProviderError, normalize_code
 from quantlab.services.quality import validate_bars
+
+
+FATAL_QUALITY_ERRORS = (
+    "INVALID_OHLC",
+    "DUPLICATE",
+    "UNSORTED_DATES",
+    "EXTREME_DAILY_RETURN",
+    "MIXED_CODES",
+    "MIXED_SOURCES",
+)
+
+# Fixed stripes avoid an unbounded lock registry while still coalescing the
+# parallel market/analysis requests for the same security and provider.
+FETCH_LOCKS = tuple(Lock() for _ in range(64))
+
 
 class MarketDataResult(BaseModel):
     bars: List[PriceBar]
     meta: ResponseMeta
 
+
 class MarketDataService:
-    def __init__(self, cache: MarketCache, primary: MarketDataProvider, fallback: Optional[MarketDataProvider] = None):
+    def __init__(
+        self,
+        cache: MarketCache,
+        primary: MarketDataProvider,
+        fallback: Optional[MarketDataProvider] = None,
+    ):
         self.cache = cache
         self.primary = primary
         self.fallback = fallback
 
-    def get_daily(self, code: str, start: date, end: date, refresh: bool = False) -> MarketDataResult:
-        code = normalize_code(code)
-        warnings = []
-        sources = []
-        is_cache_hit = False
-        
-        if refresh:
-            ranges = [(start, end)]
-        else:
-            ranges = self.cache.missing_ranges(code, start, end)
-            
-        fetched_bars = []
-        successful_ranges = []
-        primary_failed = False
-        
-        for r_start, r_end in ranges:
-            try:
-                new_bars = self.primary.get_daily(code, r_start, r_end)
-                if not new_bars:
-                    raise ProviderError(self.primary.name, code, "Empty response")
-                val_warnings = validate_bars(new_bars)
-                fatal = any(w.startswith("INVALID_OHLC") or w.startswith("DUPLICATE") for w in val_warnings)
-                if fatal:
-                    raise ProviderError(self.primary.name, code, "Fatal validation errors")
-                fetched_bars.extend(new_bars)
-                sources.append(self.primary.name)
-                successful_ranges.append((r_start, r_end))
-            except ProviderError:
-                primary_failed = True
-                warnings.append("PRIMARY_PROVIDER_FAILED")
-                
-                if self.fallback:
-                    try:
-                        fb_bars = self.fallback.get_daily(code, r_start, r_end)
-                        if not fb_bars:
-                            raise ProviderError(self.fallback.name, code, "Empty response")
-                        fb_val_warnings = validate_bars(fb_bars)
-                        fb_fatal = any(w.startswith("INVALID_OHLC") or w.startswith("DUPLICATE") for w in fb_val_warnings)
-                        if fb_fatal:
-                            raise ProviderError(self.fallback.name, code, "Fatal validation errors in fallback")
-                        fetched_bars.extend(fb_bars)
-                        sources.append(self.fallback.name)
-                        successful_ranges.append((r_start, r_end))
-                        primary_failed = False
-                    except ProviderError:
-                        pass
-        
-        if fetched_bars:
-            self.cache.upsert_bars(fetched_bars)
-            for r_start, r_end in successful_ranges:
-                self.cache.mark_synced(code, r_start, r_end)
-        
-        if refresh and self.fallback and not primary_failed:
-            try:
-                primary_last20 = sorted([b for b in fetched_bars if b.source == self.primary.name], key=lambda x: x.trade_date)[-20:]
-                if primary_last20:
-                    fb_bars = self.fallback.get_daily(code, primary_last20[0].trade_date, primary_last20[-1].trade_date)
-                    fb_dict = {b.trade_date: b for b in fb_bars}
-                    for pb in primary_last20:
-                        if pb.trade_date in fb_dict:
-                            fb = fb_dict[pb.trade_date]
-                            close_diff = abs(pb.close - fb.close)
-                            if close_diff > max(0.001, pb.close * 0.001):
-                                warnings.append(f"SOURCE_DIFFERENCE:{pb.trade_date.isoformat()}:close")
-                            vol_diff = abs(pb.volume - fb.volume)
-                            if pb.volume > 0 and vol_diff / pb.volume > 0.05:
-                                warnings.append(f"SOURCE_DIFFERENCE:{pb.trade_date.isoformat()}:volume")
-            except ProviderError:
-                pass
+    @property
+    def providers(self) -> list[MarketDataProvider]:
+        return [provider for provider in (self.primary, self.fallback) if provider]
 
-        cached = self.cache.get_bars(code, start, end)
-        if not cached:
-            raise DataUnavailableError(code, 2 if self.fallback else 1)
-            
-        if primary_failed and not fetched_bars:
-            warnings.append("STALE_CACHE")
-            is_cache_hit = True
-        elif not refresh and not ranges:
-            is_cache_hit = True
-            
-        sources = list(set(sources))
-        if not sources:
-            sources = ["cache"]
-            
-        return MarketDataResult(
-            bars=cached,
-            meta=ResponseMeta(
-                sources=sources,
-                fetched_at=datetime.now(timezone.utc),
-                cache_hit=is_cache_hit,
-                is_demo=self.primary.name.lower() == "demo",
-                warnings=warnings
+    @staticmethod
+    def _fatal_quality_errors(bars: List[PriceBar]) -> list[str]:
+        return [
+            warning
+            for warning in validate_bars(bars)
+            if warning.startswith(FATAL_QUALITY_ERRORS)
+        ]
+
+    def _rank_providers(
+        self, code: str, start: date, end: date
+    ) -> list[MarketDataProvider]:
+        preferred = self.cache.get_preferred_provider(code)
+        configured_priority = {
+            provider.name: index for index, provider in enumerate(self.providers)
+        }
+        return sorted(
+            self.providers,
+            key=lambda provider: (
+                0 if provider.name == preferred else 1,
+                -self.cache.coverage_days(provider.name, code, start, end),
+                configured_priority[provider.name],
+            ),
+        )
+
+    def _full_cached_result(
+        self,
+        providers: list[MarketDataProvider],
+        code: str,
+        start: date,
+        end: date,
+    ) -> tuple[MarketDataProvider, List[PriceBar]] | None:
+        for provider in providers:
+            if self.cache.missing_ranges(provider.name, code, start, end):
+                continue
+            cached = self.cache.get_bars(provider.name, code, start, end)
+            if cached and not self._fatal_quality_errors(cached):
+                return provider, cached
+        return None
+
+    def _load_provider(
+        self,
+        provider: MarketDataProvider,
+        code: str,
+        start: date,
+        end: date,
+        refresh: bool,
+    ) -> tuple[List[PriceBar], bool]:
+        dataset = provider.name
+        ranges = (
+            [(start, end)]
+            if refresh
+            else self.cache.missing_ranges(dataset, code, start, end)
+        )
+        if not ranges:
+            cached = self.cache.get_bars(dataset, code, start, end)
+            if not cached or self._fatal_quality_errors(cached):
+                raise ProviderError(provider.name, code, "Invalid cached series")
+            return cached, True
+
+        fetched_by_range: list[tuple[date, date, List[PriceBar]]] = []
+        for range_start, range_end in ranges:
+            new_bars = provider.get_daily(code, range_start, range_end)
+            if not new_bars:
+                raise ProviderError(provider.name, code, "Empty response")
+            if self._fatal_quality_errors(new_bars):
+                raise ProviderError(provider.name, code, "Invalid provider response")
+            fetched_by_range.append((range_start, range_end, new_bars))
+
+        cached = [] if refresh else self.cache.get_bars(dataset, code, start, end)
+        combined_by_date = {bar.trade_date: bar for bar in cached}
+        for _, _, new_bars in fetched_by_range:
+            combined_by_date.update({bar.trade_date: bar for bar in new_bars})
+        combined = sorted(combined_by_date.values(), key=lambda bar: bar.trade_date)
+        if self._fatal_quality_errors(combined):
+            raise ProviderError(
+                provider.name, code, "Invalid combined cached/provider series"
             )
+
+        if refresh:
+            self.cache.replace_range(dataset, code, start, end, combined)
+        else:
+            for range_start, range_end, new_bars in fetched_by_range:
+                self.cache.upsert_bars(dataset, new_bars)
+                self.cache.mark_synced(dataset, code, range_start, range_end)
+
+        return combined, False
+
+    def _load_provider_singleflight(
+        self,
+        provider: MarketDataProvider,
+        code: str,
+        start: date,
+        end: date,
+        refresh: bool,
+    ) -> tuple[List[PriceBar], bool]:
+        lock_key = (self.cache.db_path, provider.name, code)
+        lock = FETCH_LOCKS[hash(lock_key) % len(FETCH_LOCKS)]
+        with lock:
+            return self._load_provider(provider, code, start, end, refresh)
+
+    def _valid_stale_cache(
+        self, provider: MarketDataProvider, code: str, start: date, end: date
+    ) -> List[PriceBar]:
+        cached = self.cache.get_bars(provider.name, code, start, end)
+        if cached and not self._fatal_quality_errors(cached):
+            return cached
+        return []
+
+    def _cross_check(
+        self,
+        code: str,
+        bars: List[PriceBar],
+        warnings: list[str],
+    ) -> None:
+        if not self.fallback:
+            return
+        primary_last20 = sorted(bars, key=lambda bar: bar.trade_date)[-20:]
+        if not primary_last20:
+            return
+        try:
+            fallback_bars = self.fallback.get_daily(
+                code,
+                primary_last20[0].trade_date,
+                primary_last20[-1].trade_date,
+            )
+        except ProviderError:
+            return
+        fallback_by_date = {bar.trade_date: bar for bar in fallback_bars}
+        for primary_bar in primary_last20:
+            fallback_bar = fallback_by_date.get(primary_bar.trade_date)
+            if not fallback_bar:
+                continue
+            close_diff = abs(primary_bar.close - fallback_bar.close)
+            if close_diff > max(0.001, primary_bar.close * 0.001):
+                warnings.append(
+                    f"SOURCE_DIFFERENCE:{primary_bar.trade_date.isoformat()}:close"
+                )
+            volume_diff = abs(primary_bar.volume - fallback_bar.volume)
+            if primary_bar.volume > 0 and volume_diff / primary_bar.volume > 0.05:
+                warnings.append(
+                    f"SOURCE_DIFFERENCE:{primary_bar.trade_date.isoformat()}:volume"
+                )
+
+    def get_daily(
+        self,
+        code: str,
+        start: date,
+        end: date,
+        refresh: bool = False,
+    ) -> MarketDataResult:
+        code = normalize_code(code)
+        warnings: list[str] = []
+        ranked_providers = self._rank_providers(code, start, end)
+
+        if not refresh:
+            cached_result = self._full_cached_result(
+                ranked_providers, code, start, end
+            )
+            if cached_result:
+                selected_provider, bars = cached_result
+                return MarketDataResult(
+                    bars=bars,
+                    meta=ResponseMeta(
+                        sources=[selected_provider.name],
+                        fetched_at=datetime.now(timezone.utc),
+                        cache_hit=True,
+                        is_demo=selected_provider.name.lower() == "demo",
+                        warnings=[],
+                    ),
+                )
+
+        bars: List[PriceBar] = []
+        selected_provider = ranked_providers[0]
+        cache_hit = False
+        for provider in ranked_providers:
+            if not refresh and self.cache.provider_in_cooldown(code, provider.name):
+                warnings.append(f"PROVIDER_COOLDOWN:{provider.name}")
+                continue
+            try:
+                bars, cache_hit = self._load_provider_singleflight(
+                    provider, code, start, end, refresh
+                )
+                selected_provider = provider
+                if not cache_hit:
+                    self.cache.record_provider_success(code, provider.name)
+                break
+            except ProviderError:
+                self.cache.record_provider_failure(code, provider.name)
+                if provider is self.primary:
+                    warnings.append("PRIMARY_PROVIDER_FAILED")
+
+        if not bars:
+            for provider in ranked_providers:
+                bars = self._valid_stale_cache(provider, code, start, end)
+                if bars:
+                    selected_provider = provider
+                    cache_hit = True
+                    warnings.append("STALE_CACHE")
+                    break
+
+        if not bars:
+            raise DataUnavailableError(code, len(ranked_providers))
+
+        if refresh and selected_provider is self.primary:
+            self._cross_check(code, bars, warnings)
+
+        return MarketDataResult(
+            bars=bars,
+            meta=ResponseMeta(
+                sources=[selected_provider.name],
+                fetched_at=datetime.now(timezone.utc),
+                cache_hit=cache_hit,
+                is_demo=selected_provider.name.lower() == "demo",
+                warnings=warnings,
+            ),
         )

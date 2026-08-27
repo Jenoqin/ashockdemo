@@ -30,6 +30,10 @@ class FakeAk:
             "最高": 1420.0, "最低": 1390.0, "成交量": 50, "成交额": 70500,
         }])
 
+    def stock_profile_cninfo(self, **kwargs):
+        assert kwargs["symbol"] == "600519"
+        return pd.DataFrame([{"公司名称": "贵州茅台酒股份有限公司", "A股简称": "贵州茅台"}])
+
 class FakePro:
     def fund_adj(self, **kwargs):
         return pd.DataFrame([{"trade_date": "20260105", "adj_factor": 1.0}])
@@ -94,6 +98,33 @@ def test_akshare_catalog_search_returns_real_catalog_entries():
     assert [item.code for item in provider.search("贵州茅台")] == ["600519.SH"]
     assert [item.code for item in provider.search("512480")] == ["512480.SH"]
     assert provider.search("不存在") == []
+
+def test_akshare_instrument_uses_formal_company_name():
+    provider = AkShareProvider(FakeAk())
+    instrument = provider.get_instrument("600519.SH")
+    assert instrument.name == "贵州茅台"
+    assert instrument.full_name == "贵州茅台酒股份有限公司"
+    assert [item.code for item in provider.search("贵州茅台酒股份有限公司")] == ["600519.SH"]
+
+def test_tushare_catalog_maps_formal_company_name():
+    class CatalogFakePro:
+        def stock_basic(self, **kwargs):
+            assert "fullname" in kwargs["fields"]
+            return pd.DataFrame([{
+                "ts_code": "600519.SH",
+                "symbol": "600519",
+                "name": "贵州茅台",
+                "fullname": "贵州茅台酒股份有限公司",
+            }])
+
+        def etf_basic(self, **kwargs):
+            return pd.DataFrame()
+
+    provider = TushareProvider(CatalogFakePro())
+    instrument = provider.get_instrument("600519.SH")
+    assert instrument.name == "贵州茅台"
+    assert instrument.full_name == "贵州茅台酒股份有限公司"
+    assert [item.code for item in provider.search("贵州茅台酒股份有限公司")] == ["600519.SH"]
 
 def test_demo_history_is_independent_of_requested_start_date():
     provider = DemoProvider()

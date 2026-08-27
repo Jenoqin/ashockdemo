@@ -54,3 +54,23 @@ def test_profile_keeps_akshare_values_and_only_fills_missing_fields_from_tushare
     assert profile.equity.pe == 18.0
     assert profile.equity.financial_periods[0].report_date == date(2026, 3, 31)
     assert service.profile_sources("600519.SH") == ["AkShare", "Tushare Pro"]
+
+
+def test_instrument_fills_missing_formal_name_from_fallback():
+    class Primary(FakeProfileProvider):
+        name = "AkShare"
+
+    class Fallback(FakeProfileProvider):
+        name = "Tushare Pro"
+
+        def get_instrument(self, code):
+            return Instrument(
+                code=code,
+                name="贵州茅台",
+                full_name="贵州茅台酒股份有限公司",
+                asset_type="equity",
+                exchange="SH",
+            )
+
+    instrument = AssetService(Primary(), Fallback()).get_instrument("600519.SH")
+    assert instrument.full_name == "贵州茅台酒股份有限公司"

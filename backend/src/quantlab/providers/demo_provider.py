@@ -13,7 +13,13 @@ class DemoProvider:
     _INSTRUMENTS = {
         "510300.SH": Instrument(code="510300.SH", name="沪深300ETF", asset_type="etf", exchange="SH"),
         "512480.SH": Instrument(code="512480.SH", name="半导体ETF", asset_type="etf", exchange="SH"),
-        "600519.SH": Instrument(code="600519.SH", name="贵州茅台", asset_type="equity", exchange="SH"),
+        "600519.SH": Instrument(
+            code="600519.SH",
+            name="贵州茅台",
+            full_name="贵州茅台酒股份有限公司",
+            asset_type="equity",
+            exchange="SH",
+        ),
     }
 
     def __init__(self):
@@ -26,7 +32,9 @@ class DemoProvider:
         return [
             instrument
             for instrument in self._INSTRUMENTS.values()
-            if value in instrument.code or value in instrument.name.upper()
+            if value in instrument.code
+            or value in instrument.name.upper()
+            or value in (instrument.full_name or "").upper()
         ]
 
     def get_instrument(self, code: str) -> Instrument:

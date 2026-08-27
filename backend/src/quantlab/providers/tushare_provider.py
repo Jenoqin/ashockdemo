@@ -69,7 +69,7 @@ class TushareProvider:
             try:
                 stocks = self.client.stock_basic(
                     exchange="", list_status="L",
-                    fields="ts_code,symbol,name,area,industry,list_date",
+                    fields="ts_code,symbol,name,fullname,area,industry,list_date",
                 )
                 etfs = self.client.etf_basic(
                     fields="ts_code,csname,extname,index_code,index_name,mgr,list_date",
@@ -89,7 +89,14 @@ class TushareProvider:
                             norm = normalize_code(code)
                         except ValueError:
                             continue
-                        catalog[norm] = Instrument(code=norm, name=str(name), asset_type="equity", exchange=norm.split(".")[1])
+                        full_name = _value(row.get("fullname"))
+                        catalog[norm] = Instrument(
+                            code=norm,
+                            name=str(name),
+                            full_name=str(full_name) if full_name else None,
+                            asset_type="equity",
+                            exchange=norm.split(".")[1],
+                        )
                         stock_rows[norm] = row.to_dict()
             if etfs is not None:
                 for _, row in etfs.iterrows():
@@ -120,7 +127,12 @@ class TushareProvider:
             exact_code = normalize_code(text)
         except ValueError:
             pass
-        matches = [item for item in catalog.values() if text in item.code or text in item.name.upper()]
+        matches = [
+            item for item in catalog.values()
+            if text in item.code
+            or text in item.name.upper()
+            or text in (item.full_name or "").upper()
+        ]
         matches.sort(key=lambda item: (item.code != exact_code, not item.name.upper().startswith(text), item.code))
         return matches[:20]
 

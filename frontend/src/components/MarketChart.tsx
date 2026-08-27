@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import * as echarts from 'echarts'
 import type { AnalysisResult, MetricKey, PriceBar } from '../api/types'
+import { CHART_FONT_FAMILY } from '../styles/chartTheme'
 
 interface MarketChartProps {
   bars: PriceBar[]
@@ -62,7 +63,7 @@ export default function MarketChart({ bars, analysis, metric, instrumentName }: 
 
       chart.setOption({
         animationDuration: 450,
-        textStyle: { fontFamily: 'WenQuanYi Micro Hei, Inter, sans-serif' },
+        textStyle: { fontFamily: CHART_FONT_FAMILY },
         tooltip,
         axisPointer: { link: [{ xAxisIndex: 'all' }] },
         grid: [
@@ -136,7 +137,7 @@ export default function MarketChart({ bars, analysis, metric, instrumentName }: 
 
     chart.setOption({
       animationDuration: 450,
-      textStyle: { fontFamily: 'WenQuanYi Micro Hei, Inter, sans-serif' },
+      textStyle: { fontFamily: CHART_FONT_FAMILY },
       title: { text: config.title, left: 46, top: 5, textStyle: { color: '#242722', fontSize: 15, fontWeight: 650 } },
       tooltip,
       legend: { top: 6, right: 22, textStyle: { color: '#656760' } },

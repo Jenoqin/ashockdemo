@@ -20,7 +20,11 @@ function getRangeDates(key: DateRangeKey): DateRange {
   const end = new Date()
   const start = new Date()
   
-  if (key === '3m') {
+  if (key === '1w') {
+    start.setDate(start.getDate() - 7)
+  } else if (key === '1m') {
+    start.setMonth(start.getMonth() - 1)
+  } else if (key === '3m') {
     start.setMonth(start.getMonth() - 3)
   } else if (key === '6m') {
     start.setMonth(start.getMonth() - 6)
@@ -29,7 +33,7 @@ function getRangeDates(key: DateRangeKey): DateRange {
   } else if (key === '3y') {
     start.setFullYear(start.getFullYear() - 3)
   } else if (key === 'all') {
-    start.setFullYear(2000)
+    start.setFullYear(1990, 0, 1)
   }
 
   const formatLocalDate = (value: Date) => {

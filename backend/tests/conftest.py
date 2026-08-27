@@ -20,7 +20,13 @@ class FullFakeProvider:
     def get_instrument(self, code):
         if code == "512480.SH":
             return Instrument(code=code, name="半导体 ETF", asset_type="etf", exchange="SH")
-        return Instrument(code=code, name="贵州茅台", asset_type="equity", exchange="SH")
+        return Instrument(
+            code=code,
+            name="贵州茅台",
+            full_name="贵州茅台酒股份有限公司",
+            asset_type="equity",
+            exchange="SH",
+        )
 
     def get_daily(self, code, start, end):
         # returns 100 monotonically dated valid bars

@@ -18,8 +18,9 @@ def test_performance_metrics_annualizes_daily_returns():
 
 def test_technical_frame_has_declared_columns():
     close_series = pd.Series(np.linspace(1.0, 2.0, 90))
-    frame = technical_frame(close_series)
-    assert {"ma5", "ma10", "ma20", "ma60", "macd", "macd_signal", "macd_hist", "rsi14", "boll_upper", "boll_mid", "boll_lower"} <= set(frame.columns)
+    frame = technical_frame(close_series, close_series * 1.01, close_series * 0.99)
+    assert {"ma5", "ma10", "ma20", "ma60", "macd", "macd_signal", "macd_hist", "rsi14", "boll_upper", "boll_mid", "boll_lower", "atr14_percent"} <= set(frame.columns)
+    assert frame["atr14_percent"].dropna().iloc[-1] > 0
 
 def test_scores_expose_points_and_triggered_rules():
     uptrend_frame = technical_frame(pd.Series(np.linspace(1.0, 2.0, 90)))
@@ -42,3 +43,5 @@ def test_analysis_exposes_beginner_metrics_and_linked_series():
     assert result.metrics.max_drawdown == pytest.approx(0.9 / 1.1 - 1)
     assert len(result.series.dates) == len(bars)
     assert result.series.drawdown[2] == pytest.approx(0.9 / 1.1 - 1)
+    assert len(result.series.ma20) == len(bars)
+    assert len(result.series.atr14_percent) == len(bars)

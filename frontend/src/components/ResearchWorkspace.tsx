@@ -1,8 +1,12 @@
 import { BookOpenText, ChartLineDown, ChartLineUp, Lightbulb, Scales, ShieldCheck, Target, WaveSine } from '@phosphor-icons/react'
 import { useMemo, useState } from 'react'
-import type { AnalysisResult, AssetProfile, Instrument, MetricKey, PriceBar, ResponseMeta } from '../api/types'
+import type { AnalysisResult, AssetProfile, DateRangeKey, Instrument, MetricKey, PriceBar, ResponseMeta } from '../api/types'
+import { instrumentDisplayName } from '../utils/instrumentNames'
+import { performanceLearningScore } from '../utils/learningScores'
 import AssetProfileView from './AssetProfile'
 import MarketChart from './MarketChart'
+import AnalysisRangeToolbar from './AnalysisRangeToolbar'
+import BeginnerMetricGuide from './BeginnerMetricGuide'
 
 interface ResearchWorkspaceProps {
   instrument: Instrument
@@ -10,6 +14,8 @@ interface ResearchWorkspaceProps {
   bars: PriceBar[]
   profile: AssetProfile
   profileMeta: ResponseMeta
+  range: DateRangeKey
+  onRangeChange: (range: DateRangeKey) => void
 }
 
 interface MetricDefinition {
@@ -22,6 +28,7 @@ interface MetricDefinition {
   impact: string
   experience: string
   evaluation: string
+  score: ReturnType<typeof performanceLearningScore>
 }
 
 const formatMetric = (value: number | null, format: 'percent' | 'ratio') => {
@@ -36,10 +43,11 @@ const riskLabel = (volatility: number | null) => {
   return '波动较低'
 }
 
-export default function ResearchWorkspace({ instrument, analysis, bars, profile, profileMeta }: ResearchWorkspaceProps) {
-  const [activeMetric, setActiveMetric] = useState<MetricKey>('drawdown')
-  const [focus, setFocus] = useState<'chart' | 'explanation'>('chart')
+export default function ResearchWorkspace({ instrument, analysis, bars, profile, profileMeta, range, onRangeChange }: ResearchWorkspaceProps) {
+  const [activeMetric, setActiveMetric] = useState<MetricKey>('return')
+  const [mobileView, setMobileView] = useState<'chart' | 'explanation'>('chart')
   const { metrics, series } = analysis
+  const displayName = instrumentDisplayName(instrument)
 
   const metricDefinitions = useMemo<MetricDefinition[]>(() => [
     {
@@ -48,6 +56,7 @@ export default function ResearchWorkspace({ instrument, analysis, bars, profile,
       impact: '收益决定结果，但不能单独说明过程是否平稳，也不能代表未来仍会延续。',
       experience: '需要同时和基准、波动及回撤一起看。主题类 ETF 的高收益常伴随更明显的价格起伏。',
       evaluation: metrics.period_return === null ? '当前样本不足，暂时无法评价。' : metrics.period_return > 0 ? `本期收益为正，累计${formatMetric(metrics.period_return, 'percent')}，下一步要确认这份收益承担了多少风险。` : `本期收益为负，累计${formatMetric(metrics.period_return, 'percent')}，应进一步查看回撤发生在何时。`,
+      score: performanceLearningScore('return', metrics.period_return),
     },
     {
       key: 'volatility', label: '年化波动', value: metrics.annualized_volatility, format: 'percent', icon: WaveSine,
@@ -55,6 +64,7 @@ export default function ResearchWorkspace({ instrument, analysis, bars, profile,
       impact: '数值越高，短期涨跌越剧烈，持有体验越颠簸，对仓位和耐心要求也越高。',
       experience: '15% 以下通常较温和，15%–30% 属于中等波动，超过 30% 常见于高波动行业或主题资产。',
       evaluation: metrics.annualized_volatility === null ? '当前样本不足，暂时无法评价。' : `当前为 ${formatMetric(metrics.annualized_volatility, 'percent')}，${riskLabel(metrics.annualized_volatility)}。经验区间只用于学习，不是买卖阈值。`,
+      score: performanceLearningScore('volatility', metrics.annualized_volatility),
     },
     {
       key: 'drawdown', label: '最大回撤', value: metrics.max_drawdown, format: 'percent', icon: ChartLineDown,
@@ -62,6 +72,7 @@ export default function ResearchWorkspace({ instrument, analysis, bars, profile,
       impact: '回撤越大，实际持有体验越差，需要更长时间和更强耐心等待价格修复。',
       experience: '宽基 ETF 回撤在 10% 内较温和，10%–20% 属于中等，超过 20% 表示持有压力明显。',
       evaluation: metrics.max_drawdown === null ? '当前样本不足，暂时无法评价。' : `本期最大回撤 ${formatMetric(metrics.max_drawdown, 'percent')}，${Math.abs(metrics.max_drawdown) > 0.2 ? '回撤较大' : Math.abs(metrics.max_drawdown) > 0.1 ? '处于中等区间' : '相对温和'}；当前回撤 ${formatMetric(metrics.current_drawdown, 'percent')}。`,
+      score: performanceLearningScore('drawdown', metrics.max_drawdown),
     },
     {
       key: 'sharpe', label: '夏普比率', value: metrics.sharpe, format: 'ratio', icon: ShieldCheck,
@@ -69,6 +80,7 @@ export default function ResearchWorkspace({ instrument, analysis, bars, profile,
       impact: '比率越高，说明风险换来的收益越有效；负值表示承担风险后仍未获得足够回报。',
       experience: '低于 0 表示风险回报较差，0–1 属于一般，超过 1 通常较好；短样本下容易失真。',
       evaluation: metrics.sharpe === null ? '当前样本不足，暂时无法评价。' : `当前夏普比率 ${formatMetric(metrics.sharpe, 'ratio')}，${metrics.sharpe >= 1 ? '风险收益效率较好' : metrics.sharpe >= 0 ? '风险收益效率一般' : '风险收益效率偏弱'}。`,
+      score: performanceLearningScore('sharpe', metrics.sharpe),
     },
   ], [metrics])
 
@@ -85,14 +97,13 @@ export default function ResearchWorkspace({ instrument, analysis, bars, profile,
     <article className="research-workspace">
       <section className="instrument-summary" aria-labelledby="instrument-title">
         <div>
-          <h1 id="instrument-title">{instrument.name} <span>{instrument.code}</span></h1>
+          <span className="lesson-eyebrow">风险收益课 · 历史体检</span>
+          <h1 id="instrument-title">{displayName} <span>{instrument.code}</span></h1>
           <p><strong>一句话结论：</strong>{summary}</p>
         </div>
-        <div className="focus-toggle" aria-label="切换浏览重点">
-          <button type="button" className={focus === 'chart' ? 'is-active' : ''} onClick={() => setFocus('chart')}>看图</button>
-          <button type="button" className={focus === 'explanation' ? 'is-active' : ''} onClick={() => setFocus('explanation')}>看解释</button>
-        </div>
       </section>
+
+      <AnalysisRangeToolbar range={range} onChange={onRangeChange} />
 
       <dl className="quick-facts">
         <div><dt>区间表现</dt><dd className={`tone-${returnTone}`}>{formatMetric(metrics.period_return, 'percent')}</dd></div>
@@ -108,7 +119,7 @@ export default function ResearchWorkspace({ instrument, analysis, bars, profile,
         <AssetProfileView profile={profile} meta={profileMeta} />
       </details>
 
-      <div className={`learning-layout focus-${focus}`}>
+      <div className={`learning-layout mobile-view-${mobileView}`}>
         <nav className="metric-rail" aria-label="核心量化指标">
           {metricDefinitions.map((item) => {
             const Icon = item.icon
@@ -116,18 +127,23 @@ export default function ResearchWorkspace({ instrument, analysis, bars, profile,
             return (
               <button key={item.key} type="button" className={selected ? 'is-active' : ''} aria-pressed={selected} onClick={() => setActiveMetric(item.key)}>
                 <span className="metric-icon"><Icon size={27} weight="duotone" aria-hidden="true" /></span>
-                <span><small>{item.label}</small><strong>{formatMetric(item.value, item.format)}</strong></span>
+                <span><small>{item.label}</small><strong>{formatMetric(item.value, item.format)}</strong><span className="metric-score-label">学习分 {item.score.score ?? '—'} / 100</span></span>
               </button>
             )
           })}
         </nav>
 
+        <div className="mobile-view-toggle" role="group" aria-label="移动端内容视图">
+          <button type="button" className={mobileView === 'chart' ? 'is-active' : ''} aria-pressed={mobileView === 'chart'} onClick={() => setMobileView('chart')}>图表</button>
+          <button type="button" className={mobileView === 'explanation' ? 'is-active' : ''} aria-pressed={mobileView === 'explanation'} onClick={() => setMobileView('explanation')}>指标解释</button>
+        </div>
+
         <section className="chart-panel" aria-live="polite">
           <div className="chart-panel-heading">
             <div><strong>{active.label}</strong><span>点击左侧指标，图表与解释同步切换</span></div>
-            <div className="chart-legend"><span className="legend-asset" />{instrument.name}</div>
+            <div className="chart-legend"><span className="legend-asset" />{displayName}</div>
           </div>
-          <MarketChart bars={bars} analysis={analysis} metric={activeMetric} instrumentName={instrument.name} />
+          <MarketChart bars={bars} analysis={analysis} metric={activeMetric} instrumentName={displayName} />
         </section>
 
         <aside className="learning-panel" aria-label={`${active.label}解释`}>
@@ -135,8 +151,11 @@ export default function ResearchWorkspace({ instrument, analysis, bars, profile,
           <section><h2><Scales size={22} weight="duotone" />影响</h2><p>{active.impact}</p></section>
           <section><h2><Lightbulb size={22} weight="duotone" />经验参考</h2><p>{active.experience}</p></section>
           <section><h2><Target size={22} weight="duotone" />当前评价</h2><p>{active.evaluation}</p></section>
+          <section><h2><ShieldCheck size={22} weight="duotone" />评分口径</h2><p>{active.score.score === null ? active.score.basis : `${active.score.score} 分 · ${active.score.label}。${active.score.basis}；这是经验参考，不是买卖阈值。`}</p></section>
         </aside>
       </div>
+
+      <BeginnerMetricGuide />
     </article>
   )
 }

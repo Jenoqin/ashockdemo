@@ -43,7 +43,11 @@ def performance_metrics(returns: pd.Series, risk_free_rate: float = 0.02) -> Per
         sortino=float(sortino) if pd.notna(sortino) else None,
     )
 
-def technical_frame(close: pd.Series) -> pd.DataFrame:
+def technical_frame(
+    close: pd.Series,
+    high: Optional[pd.Series] = None,
+    low: Optional[pd.Series] = None,
+) -> pd.DataFrame:
     df = pd.DataFrame({"close": close})
     df["ma5"] = close.rolling(5).mean()
     df["ma10"] = close.rolling(10).mean()
@@ -71,6 +75,21 @@ def technical_frame(close: pd.Series) -> pd.DataFrame:
     std20 = close.rolling(20).std(ddof=0)
     df["boll_upper"] = df["boll_mid"] + 2 * std20
     df["boll_lower"] = df["boll_mid"] - 2 * std20
+
+    if high is not None and low is not None:
+        previous_close = close.shift(1)
+        true_range = pd.concat(
+            [
+                high - low,
+                (high - previous_close).abs(),
+                (low - previous_close).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
+        atr14 = true_range.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+        df["atr14_percent"] = atr14 / close
+    else:
+        df["atr14_percent"] = np.nan
     
     return df
 
@@ -84,37 +103,37 @@ def score_diagnostics(frame: pd.DataFrame) -> Diagnostics:
     # Trend
     t_rules = []
     close_above_ma20 = pd.notna(last["close"]) and pd.notna(last["ma20"]) and last["close"] > last["ma20"]
-    t_rules.append(ScoreRule(label="Close > MA20", points=30, triggered=bool(close_above_ma20), explanation="Price is above 20-day average"))
+    t_rules.append(ScoreRule(label="价格站上 MA20", points=30, triggered=bool(close_above_ma20), explanation="当前价格高于近 20 日平均价格"))
     
     ma20_above_ma60 = pd.notna(last["ma20"]) and pd.notna(last["ma60"]) and last["ma20"] > last["ma60"]
-    t_rules.append(ScoreRule(label="MA20 > MA60", points=30, triggered=bool(ma20_above_ma60), explanation="Short-term trend above long-term trend"))
+    t_rules.append(ScoreRule(label="MA20 高于 MA60", points=30, triggered=bool(ma20_above_ma60), explanation="中短期平均价格高于较长期平均价格"))
     
     if len(frame) >= 5:
         ma20_slope = frame["ma20"].iloc[-1] - frame["ma20"].iloc[-5]
         slope_pos = pd.notna(ma20_slope) and ma20_slope > 0
     else:
         slope_pos = False
-    t_rules.append(ScoreRule(label="MA20 Slope > 0", points=20, triggered=bool(slope_pos), explanation="20-day average is rising over last 5 days"))
+    t_rules.append(ScoreRule(label="MA20 最近 5 日上行", points=20, triggered=bool(slope_pos), explanation="20 日均线较 5 个交易日前抬升"))
     
     macd_pos = pd.notna(last["macd_hist"]) and last["macd_hist"] > 0
-    t_rules.append(ScoreRule(label="MACD Hist > 0", points=20, triggered=bool(macd_pos), explanation="MACD histogram is positive"))
+    t_rules.append(ScoreRule(label="MACD 柱线为正", points=20, triggered=bool(macd_pos), explanation="快慢趋势差当前处于信号线上方"))
     
     t_score = sum(r.points for r in t_rules if r.triggered)
     
     # Momentum
     m_rules = []
     rsi_range = pd.notna(last["rsi14"]) and 45 <= last["rsi14"] <= 70
-    m_rules.append(ScoreRule(label="RSI in [45, 70]", points=35, triggered=bool(rsi_range), explanation="RSI is in healthy momentum range"))
+    m_rules.append(ScoreRule(label="RSI 位于 45–70", points=35, triggered=bool(rsi_range), explanation="近期上涨力量较强，但尚未进入经验上的过热区"))
     
     if len(frame) >= 20:
         ret20 = frame["close"].iloc[-1] / frame["close"].iloc[-20] - 1
         ret20_pos = pd.notna(ret20) and ret20 > 0
     else:
         ret20_pos = False
-    m_rules.append(ScoreRule(label="20-day Return > 0", points=35, triggered=bool(ret20_pos), explanation="Positive return over 20 days"))
+    m_rules.append(ScoreRule(label="近 20 日收益为正", points=35, triggered=bool(ret20_pos), explanation="当前价格高于约 20 个交易日前"))
     
     macd_above_signal = pd.notna(last["macd"]) and pd.notna(last["macd_signal"]) and last["macd"] > last["macd_signal"]
-    m_rules.append(ScoreRule(label="MACD > Signal", points=30, triggered=bool(macd_above_signal), explanation="MACD line is above signal line"))
+    m_rules.append(ScoreRule(label="MACD 高于信号线", points=30, triggered=bool(macd_above_signal), explanation="短期趋势动量强于平滑后的信号线"))
     
     m_score = sum(r.points for r in m_rules if r.triggered)
     
@@ -129,7 +148,7 @@ def score_diagnostics(frame: pd.DataFrame) -> Diagnostics:
         vol_below_med = pd.notna(curr_vol20) and pd.notna(vol20_median60) and curr_vol20 < vol20_median60
     else:
         vol_below_med = False
-    vol_rules.append(ScoreRule(label="Vol < 60d Median", points=60, triggered=bool(vol_below_med), explanation="Current volatility is below 60-day median"))
+    vol_rules.append(ScoreRule(label="20 日波动低于近 60 日中位数", points=30, triggered=bool(vol_below_med), explanation="近期价格起伏低于自身近 60 日的典型水平"))
     
     if len(roll_vol20) >= 6:
         curr_vol20 = roll_vol20.iloc[-1]
@@ -137,7 +156,25 @@ def score_diagnostics(frame: pd.DataFrame) -> Diagnostics:
         vol_lower = pd.notna(curr_vol20) and pd.notna(prev_vol20) and curr_vol20 < prev_vol20
     else:
         vol_lower = False
-    vol_rules.append(ScoreRule(label="Vol Dropping", points=40, triggered=bool(vol_lower), explanation="Volatility is lower than 5 days ago"))
+    vol_rules.append(ScoreRule(label="20 日波动较 5 日前下降", points=20, triggered=bool(vol_lower), explanation="近期波动正在收敛而不是继续放大"))
+
+    atr = frame["atr14_percent"]
+    if len(atr) >= 60:
+        atr_median60 = atr.rolling(60, min_periods=20).median().iloc[-1]
+        current_atr = atr.iloc[-1]
+        atr_below_median = pd.notna(current_atr) and pd.notna(atr_median60) and current_atr < atr_median60
+    else:
+        atr_below_median = False
+    vol_rules.append(ScoreRule(label="ATR 占比低于近 60 日中位数", points=25, triggered=bool(atr_below_median), explanation="当日真实波幅相对价格处于自身较温和区间"))
+
+    boll_width = (frame["boll_upper"] - frame["boll_lower"]) / frame["boll_mid"]
+    if len(boll_width) >= 60:
+        width_median60 = boll_width.rolling(60, min_periods=20).median().iloc[-1]
+        current_width = boll_width.iloc[-1]
+        width_below_median = pd.notna(current_width) and pd.notna(width_median60) and current_width < width_median60
+    else:
+        width_below_median = False
+    vol_rules.append(ScoreRule(label="布林带宽度低于近 60 日中位数", points=25, triggered=bool(width_below_median), explanation="价格围绕均线的分布区间相对收窄"))
     
     v_score = sum(r.points for r in vol_rules if r.triggered)
     
@@ -148,14 +185,14 @@ def score_diagnostics(frame: pd.DataFrame) -> Diagnostics:
     
     curr_dd = drawdowns.iloc[-1] if len(drawdowns) > 0 else 0
     dd_above_10 = pd.notna(curr_dd) and curr_dd > -0.10
-    d_rules.append(ScoreRule(label="Current DD > -10%", points=40, triggered=bool(dd_above_10), explanation="Current drawdown is less than 10%"))
+    d_rules.append(ScoreRule(label="当前回撤小于 10%", points=40, triggered=bool(dd_above_10), explanation="当前价格距离区间高点不足 10%"))
     
     max_dd, max_dur = max_drawdown(frame["close"])
     max_dd_above_20 = max_dd > -0.20
-    d_rules.append(ScoreRule(label="Max DD > -20%", points=30, triggered=bool(max_dd_above_20), explanation="Maximum drawdown is less than 20%"))
+    d_rules.append(ScoreRule(label="最大回撤小于 20%", points=30, triggered=bool(max_dd_above_20), explanation="观察区间最深跌幅未超过 20%"))
     
     dur_below_60 = max_dur <= 60
-    d_rules.append(ScoreRule(label="Max DD Duration <= 60", points=30, triggered=bool(dur_below_60), explanation="Longest drawdown duration is at most 60 days"))
+    d_rules.append(ScoreRule(label="最长回撤不超过 60 日", points=30, triggered=bool(dur_below_60), explanation="最长水下阶段不超过约 60 个交易日"))
     
     d_score = sum(r.points for r in d_rules if r.triggered)
     
@@ -206,7 +243,7 @@ def analyze_market(bars: list, benchmark_bars=None, risk_free_rate: float = 0.02
             bench_cum = (1 + overlap["bench"]).prod() - 1
             metrics.excess_return = float(asset_cum - bench_cum)
 
-    frame = technical_frame(df["close"])
+    frame = technical_frame(df["close"], df["high"], df["low"])
     diagnostics = score_diagnostics(frame)
 
     def optional_values(series: pd.Series) -> list[float | None]:
@@ -222,5 +259,15 @@ def analyze_market(bars: list, benchmark_bars=None, risk_free_rate: float = 0.02
             drawdown=optional_values(drawdown),
             rolling_volatility=optional_values(rolling_volatility),
             rolling_sharpe=optional_values(rolling_sharpe),
+            ma20=optional_values(frame["ma20"]),
+            ma60=optional_values(frame["ma60"]),
+            macd=optional_values(frame["macd"]),
+            macd_signal=optional_values(frame["macd_signal"]),
+            macd_hist=optional_values(frame["macd_hist"]),
+            rsi14=optional_values(frame["rsi14"]),
+            boll_upper=optional_values(frame["boll_upper"]),
+            boll_mid=optional_values(frame["boll_mid"]),
+            boll_lower=optional_values(frame["boll_lower"]),
+            atr14_percent=optional_values(frame["atr14_percent"]),
         ),
     )

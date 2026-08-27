@@ -48,12 +48,23 @@ export const analysis: AnalysisResult = {
     drawdown: [0, 0],
     rolling_volatility: [null, 0.15],
     rolling_sharpe: [null, 0.5],
+    ma20: [1.22, 1.23],
+    ma60: [1.18, 1.19],
+    macd: [0.01, 0.02],
+    macd_signal: [0.008, 0.014],
+    macd_hist: [0.002, 0.006],
+    rsi14: [58, 63],
+    boll_upper: [1.3, 1.32],
+    boll_mid: [1.22, 1.23],
+    boll_lower: [1.14, 1.14],
+    atr14_percent: [0.025, 0.028],
   },
 }
 
 export const instrument: Instrument = {
   code: '512480.SH',
   name: '半导体 ETF',
+  full_name: null,
   asset_type: 'etf',
   exchange: 'SH'
 }

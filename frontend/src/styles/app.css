@@ -1,11 +1,3 @@
-@font-face {
-  font-family: 'WenQuanYi Micro Hei';
-  src: url('/fonts/wqy-microhei.woff2') format('woff2');
-  font-style: normal;
-  font-weight: 400 800;
-  font-display: swap;
-}
-
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {
@@ -13,10 +5,13 @@ body {
   min-width: 320px;
   background: var(--paper);
   color: var(--ink);
-  font-family: 'WenQuanYi Micro Hei', Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-sans-zh);
   font-size: 15px;
   line-height: 1.55;
+  letter-spacing: 0;
+  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 button, input, select { font: inherit; }
 button, a, select { -webkit-tap-highlight-color: transparent; }
@@ -42,7 +37,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .app-header {
   min-height: 82px;
   display: grid;
-  grid-template-columns: 245px minmax(320px, 600px) minmax(420px, 1fr);
+  grid-template-columns: 220px minmax(300px, 520px) minmax(300px, 1fr);
   align-items: center;
   gap: 24px;
   padding: 0 clamp(24px, 3.2vw, 52px);
@@ -88,18 +83,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .search-results code { color: var(--muted-strong); font-family: inherit; font-size: 12px; }
 .search-empty { padding: 16px 12px; color: var(--muted-strong); font-size: 13px; }
 .header-controls { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
-.range-control, .benchmark-control {
-  height: 46px;
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  white-space: nowrap;
-}
-.range-control select { appearance: none; min-width: 55px; border: 0; outline: 0; background: transparent; color: var(--ink); cursor: pointer; }
+.lesson-navigation { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-soft); }
+.lesson-navigation button { min-height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: var(--muted-strong); cursor: pointer; white-space: nowrap; }
+.lesson-navigation button.is-active { background: var(--surface); color: var(--forest); box-shadow: 0 2px 10px rgb(31 41 34 / 7%); font-weight: 750; }
 .beginner-guide { display: inline-flex; align-items: center; gap: 7px; padding: 10px 4px; color: var(--ink); text-decoration: none; white-space: nowrap; }
 
 main { flex: 1; width: 100%; padding: 26px clamp(24px, 3.2vw, 52px) 0; }
@@ -110,9 +96,10 @@ main { flex: 1; width: 100%; padding: 26px clamp(24px, 3.2vw, 52px) 0; }
 .instrument-summary h1 { margin: 0; font-size: clamp(27px, 2.2vw, 34px); line-height: 1.22; letter-spacing: -.035em; }
 .instrument-summary h1 span { margin-left: 7px; color: #8a8c86; font-size: .64em; font-weight: 500; letter-spacing: .01em; }
 .instrument-summary p { margin: 7px 0 0; font-size: 15px; }
-.focus-toggle { display: inline-flex; flex: 0 0 auto; padding: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
-.focus-toggle button { min-width: 88px; height: 38px; padding: 0 18px; border: 0; border-radius: 999px; background: transparent; color: var(--ink); cursor: pointer; }
-.focus-toggle button.is-active { background: var(--forest); color: #fff; font-weight: 700; }
+.lesson-eyebrow { display: block; margin-bottom: 5px; color: var(--forest); font-size: 12px; font-weight: 800; letter-spacing: .08em; }
+.score-boundary-note { display: flex; align-items: center; gap: 9px; margin: 18px 0 0; padding: 10px 13px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--forest-soft); color: var(--muted-strong); font-size: 12px; }
+.score-boundary-note svg { flex: 0 0 auto; color: var(--forest); }
+.score-boundary-note strong { color: var(--ink); }
 .quick-facts { display: flex; align-items: stretch; margin: 20px 0 28px; padding: 0; }
 .quick-facts > div { min-width: 225px; padding: 0 28px 0 20px; border-left: 1px solid var(--line); }
 .quick-facts > div:first-child { padding-left: 2px; border-left: 0; }
@@ -160,6 +147,9 @@ main { flex: 1; width: 100%; padding: 26px clamp(24px, 3.2vw, 52px) 0; }
 .metric-rail button small, .metric-rail button strong { display: block; }
 .metric-rail button small { font-size: 14px; font-weight: 650; }
 .metric-rail button strong { margin-top: 5px; font-size: 27px; line-height: 1; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
+.metric-rail button strong em { margin-left: 2px; font-size: 11px; font-style: normal; font-weight: 650; letter-spacing: 0; opacity: .72; }
+.metric-score-label { display: block; margin-top: 7px; color: var(--muted); font-size: 10px; line-height: 1.25; }
+.metric-rail button.is-active .metric-score-label { color: rgb(255 255 255 / 72%); }
 
 .chart-panel { min-width: 0; padding-top: 2px; transition: opacity .2s ease; }
 .chart-panel-heading { min-height: 35px; display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 0 12px 0 4px; }
@@ -168,7 +158,27 @@ main { flex: 1; width: 100%; padding: 26px clamp(24px, 3.2vw, 52px) 0; }
 .chart-panel-heading span { margin-top: 2px; color: var(--muted); font-size: 11px; }
 .chart-legend { display: inline-flex; align-items: center; gap: 7px; color: var(--muted-strong); font-size: 12px; }
 .legend-asset { width: 28px; height: 2px; background: var(--forest); }
+.analysis-toolbar { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 14px; padding: 8px 2px 10px; border-bottom: 1px solid var(--line); }
+.analysis-toolbar-copy strong, .analysis-toolbar-copy span { display: block; }
+.analysis-toolbar-copy strong { color: var(--ink); font-size: 13px; }
+.analysis-toolbar-copy span { margin-top: 1px; color: var(--muted); font-size: 10px; }
+.date-range-control { display: inline-flex; align-items: center; }
+.date-range-segments { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-soft); }
+.date-range-segments button { min-width: 43px; height: 34px; padding: 0 9px; border: 0; border-radius: 999px; background: transparent; color: var(--muted-strong); font-size: 12px; cursor: pointer; }
+.date-range-segments button:hover { color: var(--forest); }
+.date-range-segments button.is-active { background: var(--surface); color: var(--forest); box-shadow: 0 2px 9px rgb(31 41 34 / 8%); font-weight: 800; }
+.date-range-select { display: none; }
+.refreshing-range-shell { width: min(100%, 1480px); margin: 0 auto; }
+.refreshing-range-shell .analysis-toolbar { margin-top: 0; }
 .metric-chart { width: 100%; height: 630px; }
+.technical-workspace .score-boundary-note { margin-bottom: 28px; }
+.technical-learning-layout { align-items: start; }
+.technical-learning-layout .metric-rail button { min-height: 154px; }
+.technical-values { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 8px 10px 0 4px; }
+.technical-values > div { padding: 10px 12px; border-left: 2px solid var(--line-strong); background: var(--surface); }
+.technical-values dt { color: var(--muted); font-size: 10px; }
+.technical-values dd { margin: 2px 0 0; font-size: 14px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.technical-workspace .metric-chart { height: 560px; }
 
 .learning-panel {
   align-self: start;
@@ -180,19 +190,57 @@ main { flex: 1; width: 100%; padding: 26px clamp(24px, 3.2vw, 52px) 0; }
   box-shadow: var(--shadow-soft);
   transition: border-color .2s ease, transform .2s ease;
 }
-.focus-explanation .learning-panel { border-color: var(--forest); transform: translateY(-2px); }
-.focus-explanation .chart-panel { opacity: .48; }
+.mobile-view-toggle { display: none; }
 .learning-panel section { padding: 20px 0; }
 .learning-panel section + section { border-top: 1px solid var(--line); }
 .learning-panel h2 { display: flex; align-items: center; gap: 9px; margin: 0 0 10px; font-size: 16px; }
 .learning-panel h2 svg { color: var(--forest); }
 .learning-panel p { margin: 0; color: var(--muted-strong); font-size: 13px; line-height: 1.75; }
+.technical-learning-panel { min-height: 760px; }
+.score-rules ul { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.score-rules li { display: grid; grid-template-columns: 48px 1fr; gap: 9px; align-items: start; }
+.score-rules li > span { margin-top: 1px; padding: 2px 5px; border-radius: 999px; background: var(--surface-soft); color: var(--muted); font-size: 9px; text-align: center; }
+.score-rules li.is-triggered > span { background: var(--forest-soft); color: var(--forest); font-weight: 750; }
+.score-rules li div strong, .score-rules li div small { display: block; }
+.score-rules li div strong { font-size: 11px; line-height: 1.45; }
+.score-rules li div small { margin-top: 2px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+
+.beginner-metric-guide { margin-top: 34px; padding: 20px 22px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-soft); }
+.beginner-metric-guide.is-expanded { padding: 24px 28px 28px; }
+.beginner-guide-trigger { display: flex; align-items: center; justify-content: space-between; gap: 28px; }
+.beginner-guide-trigger h2 { margin: 0; font-size: 20px; letter-spacing: -.025em; }
+.beginner-guide-trigger p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.beginner-guide-trigger button { min-width: 112px; height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface-soft); color: var(--forest); font-weight: 750; cursor: pointer; }
+.beginner-guide-trigger button:hover { border-color: var(--forest); }
+.beginner-guide-trigger button:focus-visible { outline: 3px solid rgb(23 77 50 / 18%); outline-offset: 2px; }
+.beginner-guide-trigger button svg { transition: transform .18s ease; }
+.beginner-metric-guide.is-expanded .beginner-guide-trigger button svg { transform: rotate(180deg); }
+.beginner-guide-content { margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--line); }
+.beginner-guide-intro { max-width: 760px; margin: 0; color: var(--muted-strong); font-size: 14px; line-height: 1.75; }
+.metric-reading-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; padding: 26px 0; list-style: none; }
+.metric-reading-steps li { min-width: 0; padding: 0 22px; border-left: 1px solid var(--line); }
+.metric-reading-steps li:first-child { padding-left: 0; border-left: 0; }
+.metric-reading-steps li:last-child { padding-right: 0; }
+.reading-step-heading { display: flex; align-items: center; justify-content: space-between; color: var(--forest); }
+.reading-step-heading > span { color: var(--line-strong); font-size: 22px; font-weight: 800; letter-spacing: -.04em; }
+.metric-reading-steps small { display: block; margin-top: 12px; color: var(--forest); font-size: 10px; font-weight: 800; letter-spacing: .06em; }
+.metric-reading-steps h3 { margin: 4px 0 12px; font-size: 18px; }
+.metric-reading-steps strong { display: block; min-height: 42px; font-size: 13px; line-height: 1.55; }
+.metric-reading-steps p { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.risk-return-example { display: grid; grid-template-columns: minmax(230px, .7fr) minmax(360px, 1.3fr); gap: 42px; align-items: center; padding: 20px 22px; border-radius: var(--radius-md); background: var(--forest-deep); color: #fff; }
+.risk-return-example > div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 12px; }
+.risk-return-example > div span { grid-column: 1 / -1; color: rgb(255 255 255 / 68%); font-size: 11px; }
+.risk-return-example > div strong { font-size: 13px; }
+.risk-return-example p { margin: 0; color: rgb(255 255 255 / 78%); font-size: 13px; line-height: 1.75; }
+.risk-return-example p strong { color: #fff; }
+.beginner-metric-guide > .score-boundary-note { margin-top: 16px; }
 
 footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 22px; width: min(100%, 1480px); margin: auto auto 0; padding: 18px clamp(24px, 3.2vw, 52px) 24px; color: var(--muted); font-size: 11px; }
 
 @media (max-width: 1180px) {
-  .app-header { grid-template-columns: 205px minmax(300px, 1fr) auto; }
+  .app-header { grid-template-columns: 190px minmax(280px, 1fr) auto; gap: 16px; }
   .beginner-guide { display: none; }
+  .lesson-navigation button { padding-inline: 10px; }
   .learning-layout { grid-template-columns: 190px minmax(450px, 1fr) 260px; gap: 18px; }
   .metric-rail button { min-height: 108px; padding: 13px; }
   .metric-icon { width: 46px; height: 46px; }
@@ -204,7 +252,7 @@ footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 22px; wid
   .search-form { grid-column: 1 / -1; grid-row: 2; }
   .search-shell { grid-column: 1 / -1; grid-row: 2; }
   .header-controls { justify-self: end; }
-  .benchmark-control { display: none; }
+  .lesson-navigation button { padding-inline: 9px; }
   main { padding-top: 20px; }
   .quick-facts > div { min-width: 0; flex: 1; }
   .profile-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -215,21 +263,26 @@ footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 22px; wid
   .metric-rail button strong { font-size: 20px; }
   .learning-panel { min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
   .learning-panel section:nth-child(2) { border-top: 0; }
-  .focus-explanation .chart-panel { display: none; }
-  .focus-chart .learning-panel { display: none; }
+  .technical-learning-panel { min-height: 0; }
+  .technical-learning-panel section:nth-child(2) { border-top: 0; }
+  .technical-learning-panel .score-rules { grid-column: 1 / -1; }
+  .metric-reading-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 0; }
+  .metric-reading-steps li:nth-child(3) { padding-left: 0; border-left: 0; }
+  .risk-return-example { grid-template-columns: 1fr; gap: 14px; }
 }
 
 @media (max-width: 600px) {
   .app-header { grid-template-columns: 1fr auto; padding-inline: 14px; gap: 12px; }
   .brand h1 { font-size: 20px; }
   .brand-mark { width: 34px; height: 34px; }
-  .header-controls { gap: 0; }
-  .range-control { height: 40px; padding-inline: 10px; }
+  .header-controls { grid-column: 1 / -1; grid-row: 3; width: 100%; }
+  .lesson-navigation { width: 100%; min-width: 0; }
+  .lesson-navigation button { flex: 1; justify-content: center; min-width: 0; padding-inline: 7px; font-size: 12px; }
   main { padding-inline: 14px; }
   .instrument-summary { align-items: flex-start; }
   .instrument-summary h1 { font-size: 25px; }
   .instrument-summary p { font-size: 13px; }
-  .focus-toggle button { min-width: 56px; height: 34px; padding-inline: 10px; }
+  .score-boundary-note { align-items: flex-start; }
   .quick-facts { margin-block: 18px; }
   .quick-facts > div { padding-inline: 10px; }
   .quick-facts dt { font-size: 11px; }
@@ -238,9 +291,38 @@ footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 22px; wid
   .profile-facts { grid-template-columns: 1fr; }
   .metric-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metric-rail button { min-height: 74px; }
+  .technical-learning-layout .metric-rail { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .technical-learning-layout .metric-rail button { min-height: 82px; }
+  .technical-learning-layout .metric-rail button strong { font-size: 18px; }
+  .mobile-view-toggle { display: inline-flex; justify-self: start; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-soft); }
+  .mobile-view-toggle button { min-width: 82px; height: 34px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: var(--muted-strong); font-size: 12px; cursor: pointer; }
+  .mobile-view-toggle button.is-active { background: var(--surface); color: var(--forest); box-shadow: 0 2px 9px rgb(31 41 34 / 8%); font-weight: 800; }
+  .mobile-view-explanation .chart-panel { display: none; }
+  .mobile-view-chart .learning-panel { display: none; }
+  .technical-values { grid-template-columns: 1fr; margin-inline: 0; }
+  .analysis-toolbar { min-height: 54px; gap: 12px; margin-top: 10px; padding-block: 6px 8px; }
+  .analysis-toolbar-copy span { display: none; }
+  .date-range-segments { display: none; }
+  .date-range-select { height: 40px; display: inline-flex; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: var(--muted-strong); font-size: 12px; white-space: nowrap; }
+  .date-range-select select { appearance: none; min-width: 55px; border: 0; outline: 0; background: transparent; color: var(--ink); cursor: pointer; }
   .metric-chart { height: 420px; }
+  .technical-workspace .metric-chart { height: 470px; }
   .learning-panel { grid-template-columns: 1fr; padding-inline: 16px; }
   .learning-panel section:nth-child(2) { border-top: 1px solid var(--line); }
+  .technical-learning-panel section:nth-child(2) { border-top: 1px solid var(--line); }
+  .beginner-metric-guide, .beginner-metric-guide.is-expanded { margin-top: 24px; padding: 18px 16px; }
+  .beginner-guide-trigger { align-items: flex-end; gap: 12px; }
+  .beginner-guide-trigger h2 { font-size: 18px; }
+  .beginner-guide-trigger p { display: none; }
+  .beginner-guide-trigger button { min-width: 98px; height: 36px; padding-inline: 11px; font-size: 12px; }
+  .beginner-guide-content { margin-top: 18px; padding-top: 18px; }
+  .metric-reading-steps { grid-template-columns: 1fr; gap: 0; padding-block: 18px; }
+  .metric-reading-steps li, .metric-reading-steps li:first-child, .metric-reading-steps li:nth-child(3), .metric-reading-steps li:last-child { padding: 16px 0; border-left: 0; border-top: 1px solid var(--line); }
+  .metric-reading-steps li:first-child { border-top: 0; }
+  .metric-reading-steps strong { min-height: 0; }
+  .risk-return-example { padding: 17px; }
+  .risk-return-example > div { grid-template-columns: 1fr; }
+  .risk-return-example > div span { grid-column: auto; }
   footer { padding-inline: 14px; }
 }
 

@@ -7,6 +7,7 @@ AssetType = Literal["etf", "equity"]
 class Instrument(BaseModel):
     code: str
     name: str
+    full_name: str | None = None
     asset_type: AssetType
     exchange: Literal["SH", "SZ", "BJ"]
 
@@ -66,6 +67,16 @@ class AnalysisSeries(BaseModel):
     drawdown: list[float | None] = Field(default_factory=list)
     rolling_volatility: list[float | None] = Field(default_factory=list)
     rolling_sharpe: list[float | None] = Field(default_factory=list)
+    ma20: list[float | None] = Field(default_factory=list)
+    ma60: list[float | None] = Field(default_factory=list)
+    macd: list[float | None] = Field(default_factory=list)
+    macd_signal: list[float | None] = Field(default_factory=list)
+    macd_hist: list[float | None] = Field(default_factory=list)
+    rsi14: list[float | None] = Field(default_factory=list)
+    boll_upper: list[float | None] = Field(default_factory=list)
+    boll_mid: list[float | None] = Field(default_factory=list)
+    boll_lower: list[float | None] = Field(default_factory=list)
+    atr14_percent: list[float | None] = Field(default_factory=list)
 
 class AnalysisResult(BaseModel):
     metrics: PerformanceMetrics

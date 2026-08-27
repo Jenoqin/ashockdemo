@@ -63,9 +63,11 @@ def get_tushare_provider():
     settings = get_settings()
     if settings.demo_mode:
         return None
-    token = settings.tushare_token.strip() if settings.tushare_token else None
-    if not token and settings.tushare_token_file:
-        token = _load_secret_file(settings.tushare_token_file)
+    # Prefer a secret file so the token does not need to be duplicated in
+    # project configuration. Keep the direct environment variable as fallback.
+    token = _load_secret_file(settings.tushare_token_file) if settings.tushare_token_file else None
+    if not token and settings.tushare_token:
+        token = settings.tushare_token.strip()
     if token:
         client = ts.pro_api(token=token)
         client._DataApi__http_url = settings.tushare_api_url

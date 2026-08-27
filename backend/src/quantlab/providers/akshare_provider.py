@@ -86,6 +86,7 @@ class AkShareProvider:
     def __init__(self, client):
         self.client = client
         self._catalog: dict[str, Instrument] = {}
+        self._full_names: dict[str, str | None] = {}
         self._catalog_loaded_at = 0.0
         self._stock_spot = pd.DataFrame()
         self._stock_spot_loaded_at = 0.0
@@ -106,7 +107,13 @@ class AkShareProvider:
                     name = _clean_value(row.get("name", row.get("名称")))
                     if len(digits) == 6 and digits.isdigit() and name:
                         code = normalize_code(digits)
-                        catalog[code] = Instrument(code=code, name=str(name), asset_type="equity", exchange=_exchange(code))
+                        catalog[code] = Instrument(
+                            code=code,
+                            name=str(name),
+                            full_name=self._full_names.get(code),
+                            asset_type="equity",
+                            exchange=_exchange(code),
+                        )
             except Exception as exc:
                 errors.append(f"股票列表：{exc}")
             try:
@@ -145,7 +152,12 @@ class AkShareProvider:
             exact_code = normalize_code(value)
         except ValueError:
             pass
-        matches = [item for item in catalog.values() if value in item.code or value in item.name.upper()]
+        matches = [
+            item for item in catalog.values()
+            if value in item.code
+            or value in item.name.upper()
+            or value in (item.full_name or "").upper()
+        ]
         matches.sort(key=lambda item: (item.code != exact_code, not item.name.upper().startswith(value), item.code))
         return matches[:20]
 
@@ -154,7 +166,31 @@ class AkShareProvider:
         instrument = self._load_catalog().get(norm)
         if instrument is None:
             raise InstrumentNotFoundError(norm)
+        if instrument.asset_type == "equity" and not instrument.full_name:
+            instrument = self._with_equity_full_name(instrument)
         return instrument
+
+    def _with_equity_full_name(self, instrument: Instrument) -> Instrument:
+        norm = instrument.code
+        digits = norm.split(".")[0]
+        with self._lock:
+            current = self._catalog.get(norm, instrument)
+            if current.full_name:
+                return current
+            if norm not in self._full_names:
+                full_name = None
+                try:
+                    frame = self.client.stock_profile_cninfo(symbol=digits)
+                    if frame is not None and not frame.empty:
+                        full_name = _clean_value(frame.iloc[0].get("公司名称"))
+                except Exception:
+                    pass
+                self._full_names[norm] = str(full_name) if full_name else None
+            full_name = self._full_names[norm]
+            if full_name:
+                current = current.model_copy(update={"full_name": full_name})
+                self._catalog[norm] = current
+            return current
 
     def get_etf_profile(self, code: str) -> dict[str, Any]:
         norm = normalize_code(code)

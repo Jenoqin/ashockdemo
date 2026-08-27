@@ -70,11 +70,19 @@ class AssetService:
     def get_instrument(self, code: str) -> Instrument:
         code = normalize_code(code)
         try:
-            return self._primary_call(lambda: self.provider.get_instrument(code), code)
+            instrument = self._primary_call(lambda: self.provider.get_instrument(code), code)
         except (ProviderError, InstrumentNotFoundError) as primary_error:
             if self.fallback is not None:
                 return self.fallback.get_instrument(code)
             raise primary_error
+        if instrument.asset_type == "equity" and not instrument.full_name and self.fallback is not None:
+            try:
+                fallback_instrument = self.fallback.get_instrument(code)
+                if fallback_instrument.full_name:
+                    return instrument.model_copy(update={"full_name": fallback_instrument.full_name})
+            except (ProviderError, InstrumentNotFoundError):
+                pass
+        return instrument
 
     def _fetch(self, provider: Any, asset_type: str, code: str) -> dict[str, Any]:
         method_name = "get_etf_profile" if asset_type == "etf" else "get_equity_profile"
