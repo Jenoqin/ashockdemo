@@ -1,32 +1,45 @@
-# React + TypeScript + Vite
+# QuantLab 前端
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+量研手记的 React 前端。当前界面包含证券搜索、区间切换、风险收益课、技术状态课和资产资料折叠区。
 
-Currently, two official plugins are available:
+项目级安装、后端启动、真实数据配置和 API 说明请先阅读仓库根目录的 [README](../README.md)。
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 环境要求
 
-## React Compiler
+- Node.js 22.22.2+
+- npm
+- 本地后端默认监听 `http://127.0.0.1:8000`
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 安装与运行
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm ci
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+开发服务器默认位于 `http://127.0.0.1:5173`，`vite.config.ts` 会把 `/api` 代理到端口 8000 的后端。
+
+## 脚本
+
+```bash
+npm run dev          # 启动 Vite 开发服务器
+npm test -- --run    # 单次运行 Vitest 单元测试
+npm run lint         # Oxlint
+npm run build        # TypeScript 检查和生产构建
+npm run preview      # 预览已构建产物
+npx playwright test  # Playwright E2E
+```
+
+当前 Playwright 用例仍引用上一版搜索和回测界面，在用例更新前不能作为当前 UI 的验收结果。单元测试只扫描 `src/**/*.{test,spec}.{ts,tsx}`，不会包含 `e2e/`。
+
+## 当前页面结构
+
+- `App.tsx`：加载状态与“风险收益课 / 技术状态课”页面切换。
+- `hooks/useResearch.ts`：默认标的、日期区间、并发请求取消和搜索状态。
+- `components/ResearchWorkspace.tsx`：收益、波动、回撤、夏普和资产资料。
+- `components/TechnicalWorkspace.tsx`：趋势、动量、波动状态及指标解释。
+- `components/MarketChart.tsx`：风险收益联动图。
+- `components/TechnicalChart.tsx`：MA、MACD、RSI、布林带和 ATR 联动图。
+- `api/client.ts`：调用 FastAPI 的类型化客户端。
+
+`BacktestLab.tsx`、刷新客户端和相应 API 仍保留在代码中，但当前没有挂载到 `App.tsx`。

@@ -1,12 +1,14 @@
 # A 股 / ETF 量化研究台 Implementation Plan
 
+> **状态：已归档。** 这是 2026-08-08 的实施计划和过程记录，不是当前任务看板；保留的未勾选项不表示功能尚未实现，文件树和代码片段也不会随重构持续更新。当前运行方式、功能边界、依赖版本和 API 以仓库根目录 `README.md` 与代码为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 构建一个本地一键启动、默认研究 512480.SH、同时支持普通 A 股与场内 ETF 的现代化量化研究 Web 原型。
 
 **Architecture:** React/TypeScript/Vite 前端通过 REST API 调用 FastAPI 后端；后端以统一 Provider 协议接入 AkShare 和 Tushare，以 SQLite 缓存标准化数据，并把指标计算与回测保持为无网络依赖的纯服务。资产类型决定展示 ETF 特征或公司基本面，但行情、风险分析和回测共用同一条数据链路。
 
-**Tech Stack:** Python 3.11+、FastAPI、Pydantic、Pandas、NumPy、AkShare、Tushare、SQLite、pytest；Node.js 20+、React、TypeScript、Vite、ECharts、Vitest、Testing Library、Playwright。
+**Historical Tech Stack:** Python 3.11+、FastAPI、Pydantic、Pandas、NumPy、AkShare、Tushare、SQLite、pytest；Node.js 20+、React、TypeScript、Vite、ECharts、Vitest、Testing Library、Playwright。当前前端完整工具链需要 Node.js 22.22.2+。
 
 ## Global Constraints
 
