@@ -39,7 +39,7 @@ export default function Header({ onSearch, onSelect, page, onPageChange }: Heade
     <header className="app-header">
       <a className="brand" href="#top" aria-label="量研手记首页">
         <span className="brand-mark"><BookOpenText size={22} weight="fill" /></span>
-        <h1>量研手记</h1>
+        <span className="brand-title">量研手记</span>
       </a>
 
       <div className="search-shell">

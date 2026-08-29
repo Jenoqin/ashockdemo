@@ -15,6 +15,12 @@ class MarketDataProvider(Protocol):
         raise NotImplementedError
     def get_instrument(self, code: str) -> Instrument:
         raise NotImplementedError
+    def get_trade_calendar(
+        self, exchange: str, start: date, end: date
+    ) -> dict[date, bool]:
+        raise NotImplementedError
+    def get_listing_date(self, code: str) -> date | None:
+        raise NotImplementedError
     def get_daily(self, code: str, start: date, end: date) -> list[PriceBar]:
         raise NotImplementedError
 

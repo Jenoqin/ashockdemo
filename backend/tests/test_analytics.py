@@ -2,7 +2,7 @@ import math
 import numpy as np
 import pandas as pd
 import pytest
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from quantlab.models import PriceBar
 from quantlab.services.analytics import analyze_market, max_drawdown, performance_metrics, technical_frame, score_diagnostics
 
@@ -45,3 +45,30 @@ def test_analysis_exposes_beginner_metrics_and_linked_series():
     assert result.series.drawdown[2] == pytest.approx(0.9 / 1.1 - 1)
     assert len(result.series.ma20) == len(bars)
     assert len(result.series.atr14_percent) == len(bars)
+
+
+def test_analysis_warms_rolling_volatility_without_changing_selected_metrics():
+    fetched_at = datetime.now(timezone.utc)
+    history = [
+        PriceBar(
+            code="512480.SH",
+            trade_date=date(2026, 1, 1) + timedelta(days=index),
+            open=close,
+            high=close,
+            low=close,
+            close=close,
+            volume=1000,
+            source="demo",
+            fetched_at=fetched_at,
+        )
+        for index, close in enumerate(np.linspace(1.0, 1.4, 40))
+    ]
+    selected = history[-10:]
+
+    result = analyze_market(selected, history_bars=history)
+
+    assert result.metrics.period_return == pytest.approx(
+        selected[-1].close / selected[0].close - 1
+    )
+    assert len(result.series.rolling_volatility) == len(selected)
+    assert all(value is not None for value in result.series.rolling_volatility)

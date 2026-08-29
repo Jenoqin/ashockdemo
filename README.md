@@ -11,15 +11,16 @@
 - 风险收益课：区间收益、年化波动、最大回撤、夏普比率，以及对应的解释和学习评分。
 - 技术状态课：MA20/MA60、MACD、RSI 14、布林带、ATR 和透明规则诊断。
 - 资产资料：ETF 的跟踪指数、规模、份额、流动性和持仓；股票的行业、估值和财务摘要。
-- 数据追溯：响应包含数据源、抓取时间、缓存命中、演示模式和质量告警。
-- 数据服务：AkShare 主源、可选 Tushare 备用源、SQLite 增量缓存和显式演示模式。
+- 数据追溯：响应包含数据源、抓取时间、缓存命中和质量告警。
+- 数据服务：行情、交易日历、证券目录和资产资料均优先读取 SQLite 缓存；缺失或过期时再由唯一外部数据源 Tushare Pro 补齐。
+- 桌面端界面：最小视口宽度为 1024px，不维护移动端响应式布局；图表提供可展开的数据表。
 - 后端提供双均线回测与手动刷新 API；当前前端尚未挂载这两个操作入口。
 
 当前界面使用收盘价折线和指标图，不提供 K 线/成交量视图，也没有可独立开关的指标叠加层。
 
 ## 技术栈
 
-- 后端：Python 3.11+、FastAPI、Pydantic、Pandas、NumPy、AkShare、Tushare、SQLite。
+- 后端：Python 3.11+、FastAPI、Pydantic、Pandas、NumPy、Tushare Pro、SQLite。
 - 前端：React 19、TypeScript 6、Vite 8、ECharts 6。
 - 测试：pytest、Vitest、Testing Library、Playwright。
 
@@ -43,17 +44,15 @@ npm --prefix frontend ci
 cp .env.example .env
 ```
 
-`.env` 默认使用真实数据模式。首次验证界面时建议先运行演示模式，避免外部数据源、网络或 Tushare 权限影响启动。
+若现有缓存不能完整覆盖所请求的区间，需通过 `.env` 配置 `TUSHARE_TOKEN` 或 `TUSHARE_TOKEN_FILE`，由 Tushare Pro 补齐缺口。已有 SQLite 缓存不会被安装或启动流程清除。
 
 ## 启动
-
-### 演示模式（推荐用于首次启动）
 
 终端 1：
 
 ```bash
 cd backend
-QUANTLAB_DEMO_MODE=true .venv/bin/uvicorn quantlab.main:app --reload --port 8000
+.venv/bin/uvicorn quantlab.main:app --reload --port 8000
 ```
 
 终端 2：
@@ -65,29 +64,20 @@ npm run dev
 
 打开 `http://127.0.0.1:5173`。Vite 会把 `/api` 请求代理到 `http://127.0.0.1:8000`，FastAPI 文档位于 `http://127.0.0.1:8000/docs`。
 
-### 真实数据模式
-
-在根目录 `.env` 中保持 `QUANTLAB_DEMO_MODE=false`，按需配置 Tushare，然后启动：
-
-```bash
-cd backend
-.venv/bin/uvicorn quantlab.main:app --reload --port 8000
-```
-
-另一个终端仍运行 `cd frontend && npm run dev`。未配置 Tushare 时，系统以 AkShare 为唯一实时数据源；配置后 Tushare 用作备用源和刷新时的近期交叉校验。
+行情请求先检查 SQLite 中 Tushare Pro 对应的缓存区间。完整命中时不访问网络；区间缺失时只向 Tushare Pro 请求缺口。证券目录按完整快照持久化并缓存 24 小时，ETF/股票资料按证券持久化并缓存 10 分钟。缓存过期且上游暂时失败时，服务会返回最近一次成功快照，并在响应 `meta.warnings` 中标记 `STALE_CACHE`。未配置 Token 时，已有完整缓存仍可继续服务，真正的缓存缺口才会返回数据源配置错误。
 
 ### Make 快捷命令
 
 安装 GNU Make 后，可从仓库根目录使用：
 
 ```bash
-make run        # 真实数据模式启动前后端
+make run        # 启动缓存优先、Tushare Pro 补缺的前后端
 make test       # 后端与前端单元测试
-make test-e2e   # 演示模式的 Playwright 流程
+make test-e2e   # 使用当前缓存/Tushare 配置的 Playwright 流程
 make smoke-live # 访问外部数据源的实时 smoke test
 ```
 
-`make run` 会强制使用真实数据模式。当前 Playwright 用例仍针对上一版界面，更新前不应作为当前 UI 的验收结果。
+当前 Playwright 用例仍针对上一版界面，更新前不应作为当前 UI 的验收结果。
 
 ## 配置
 
@@ -95,12 +85,10 @@ make smoke-live # 访问外部数据源的实时 smoke test
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `QUANTLAB_DEMO_MODE` | `false` | 使用确定性的演示数据，不访问真实行情源 |
-| `QUANTLAB_DATABASE_PATH` | `./data/quantlab-hfq-v1.db` | 真实数据 SQLite 缓存路径；相对于后端进程工作目录 |
-| `QUANTLAB_DEMO_DATABASE_PATH` | `./data/quantlab-demo-v2.db` | 与真实行情隔离的演示缓存路径 |
+| `QUANTLAB_DATABASE_PATH` | `./data/quantlab-hfq-v1.db` | Tushare Pro 行情、交易日历、证券目录和资产资料的 SQLite 缓存路径；相对于后端进程工作目录 |
 | `QUANTLAB_FRONTEND_ORIGIN` | `http://localhost:5173` | FastAPI 允许的前端 CORS Origin |
-| `TUSHARE_TOKEN` | 空 | 可选的 Tushare Token |
-| `TUSHARE_TOKEN_FILE` | 空 | 可选的 Token 文件；优先于 `TUSHARE_TOKEN` |
+| `TUSHARE_TOKEN` | 空 | Tushare Pro Token；缓存缺失时与 Token 文件至少配置一个 |
+| `TUSHARE_TOKEN_FILE` | 空 | Token 文件；配置时优先于 `TUSHARE_TOKEN` |
 | `TUSHARE_API_URL` | `https://api.waditu.com/dataapi` | Tushare API 地址 |
 
 Token 文件支持纯 Token、dotenv 风格的 `TUSHARE_TOKEN=...`，以及包含 `token`/`TUSHARE_TOKEN` 字段的 JSON。不要提交 `.env` 或 Token 文件。
@@ -123,7 +111,7 @@ npm run build
 
 ```bash
 cd backend
-QUANTLAB_DEMO_MODE=false .venv/bin/python ../scripts/smoke_live_data.py
+.venv/bin/python ../scripts/smoke_live_data.py
 ```
 
 ## API 概览

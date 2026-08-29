@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from datetime import date
+from datetime import date, timedelta
 from quantlab.api.dependencies import get_market_data_service, get_asset_service
 from quantlab.services.market_data import MarketDataService
 from quantlab.services.assets import AssetService
 from quantlab.services.analytics import analyze_market
 
 router = APIRouter()
+
+ANALYSIS_LOOKBACK_DAYS = 120
 
 @router.get("/api/market/{code}/daily")
 def get_daily(
@@ -37,8 +39,17 @@ def get_analysis(
     if start > end:
         raise HTTPException(status_code=400, detail={"code": "INVALID_DATE_RANGE", "message": "Start date must be before end date"})
     
-    # Needs to get market bars, benchmark bars if any
+    # Keep the selected range for headline metrics, while loading enough prior
+    # history to warm rolling 20/60-session chart series.
     market_res = market_service.get_daily(code, start, end)
+    history_start = start - timedelta(days=ANALYSIS_LOOKBACK_DAYS)
+    history_res = market_service.get_daily(code, history_start, end)
+    market_bars = [
+        bar for bar in market_res.bars if start <= bar.trade_date <= end
+    ]
+    history_bars = [
+        bar for bar in history_res.bars if history_start <= bar.trade_date <= end
+    ]
     profile = asset_service.get_profile(code)
     
     bench_bars = None
@@ -49,7 +60,11 @@ def get_analysis(
         except Exception:
             pass
 
-    analysis = analyze_market(market_res.bars, benchmark_bars=bench_bars)
+    analysis = analyze_market(
+        market_bars,
+        benchmark_bars=bench_bars,
+        history_bars=history_bars,
+    )
     
     return {
         "data": analysis.model_dump(),
@@ -62,7 +77,6 @@ def refresh_data(
     market_service: MarketDataService = Depends(get_market_data_service)
 ):
     # Just do a typical refresh on recent history
-    from datetime import timedelta
     today = date.today()
     try:
         market_service.get_daily(code, today - timedelta(days=60), today, refresh=True)

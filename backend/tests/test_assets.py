@@ -1,8 +1,12 @@
 from datetime import date
+from quantlab.cache import MarketCache
 from quantlab.models import Instrument
+from quantlab.providers.base import ProviderError
 from quantlab.services.assets import AssetService
 
 class FakeProfileProvider:
+    name = "Tushare Pro"
+
     def get_instrument(self, code):
         if code == "512480.SH":
             return Instrument(code=code, name="半导体 ETF", asset_type="etf", exchange="SH")
@@ -27,50 +31,47 @@ def test_equity_profile_contains_report_dates():
     assert profile.etf is None
 
 
-class PrimaryPartialProvider(FakeProfileProvider):
-    name = "AkShare"
-
-    def get_equity_profile(self, code):
-        return {"industry": "主源行业", "pe": None, "financial_periods": []}
-
-
-class FallbackProfileProvider(FakeProfileProvider):
-    name = "Tushare Pro"
-
-    def get_equity_profile(self, code):
-        return {
-            "industry": "备用行业",
-            "pe": 18.0,
-            "pb": 2.0,
-            "total_market_cap": 100.0,
-            "financial_periods": [{"report_date": date(2026, 3, 31), "revenue": 1.0}],
-        }
+def test_profile_provenance_uses_only_tushare():
+    service = AssetService(FakeProfileProvider())
+    service.get_profile("600519.SH")
+    assert service.profile_sources("600519.SH") == ["Tushare Pro"]
 
 
-def test_profile_keeps_akshare_values_and_only_fills_missing_fields_from_tushare():
-    service = AssetService(PrimaryPartialProvider(), FallbackProfileProvider())
-    profile = service.get_profile("600519.SH")
-    assert profile.equity.industry == "主源行业"
-    assert profile.equity.pe == 18.0
-    assert profile.equity.financial_periods[0].report_date == date(2026, 3, 31)
-    assert service.profile_sources("600519.SH") == ["AkShare", "Tushare Pro"]
+def test_profile_persists_and_survives_service_restart_without_provider(tmp_path):
+    cache = MarketCache(tmp_path / "market.db")
+    first = AssetService(FakeProfileProvider(), cache)
+    expected = first.get_profile("512480.SH")
+    assert first.profile_meta("512480.SH")["cache_hit"] is False
 
-
-def test_instrument_fills_missing_formal_name_from_fallback():
-    class Primary(FakeProfileProvider):
-        name = "AkShare"
-
-    class Fallback(FakeProfileProvider):
-        name = "Tushare Pro"
-
+    class OfflineProvider(FakeProfileProvider):
         def get_instrument(self, code):
-            return Instrument(
-                code=code,
-                name="贵州茅台",
-                full_name="贵州茅台酒股份有限公司",
-                asset_type="equity",
-                exchange="SH",
-            )
+            raise ProviderError(self.name, code, "offline")
 
-    instrument = AssetService(Primary(), Fallback()).get_instrument("600519.SH")
-    assert instrument.full_name == "贵州茅台酒股份有限公司"
+        def get_etf_profile(self, code):
+            raise AssertionError("fresh SQLite profile should bypass provider")
+
+    restored = AssetService(OfflineProvider(), cache)
+    assert restored.get_profile("512480.SH") == expected
+    assert restored.profile_meta("512480.SH")["cache_hit"] is True
+    assert restored.profile_meta("512480.SH")["warnings"] == []
+
+
+def test_stale_profile_is_served_when_refresh_fails(tmp_path):
+    cache = MarketCache(tmp_path / "market.db")
+    expected = AssetService(FakeProfileProvider(), cache).get_profile("512480.SH")
+
+    class BrokenProfileProvider(FakeProfileProvider):
+        profile_calls = 0
+
+        def get_etf_profile(self, code):
+            self.profile_calls += 1
+            raise ProviderError(self.name, code, "offline")
+
+    provider = BrokenProfileProvider()
+    restored = AssetService(provider, cache)
+    restored.profile_ttl_seconds = 0
+    assert restored.get_profile("512480.SH") == expected
+    assert restored.profile_meta("512480.SH")["cache_hit"] is True
+    assert restored.profile_meta("512480.SH")["warnings"] == ["STALE_CACHE"]
+    assert restored.get_profile("512480.SH") == expected
+    assert provider.profile_calls == 1

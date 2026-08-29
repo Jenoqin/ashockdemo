@@ -2,8 +2,9 @@ import { BookOpenText, Lightbulb, ListChecks, Pulse, Target, TrendUp, WarningCir
 import { useMemo, useState } from 'react'
 import type { AnalysisResult, DateRangeKey, DiagnosticCategory, Instrument, PriceBar, TechnicalMetricKey } from '../api/types'
 import { instrumentDisplayName } from '../utils/instrumentNames'
+import ChartDataTable, { type ChartDataColumn } from './ChartDataTable'
+import DateRangeControl from './DateRangeControl'
 import TechnicalChart from './TechnicalChart'
-import AnalysisRangeToolbar from './AnalysisRangeToolbar'
 
 interface TechnicalWorkspaceProps {
   instrument: Instrument
@@ -38,7 +39,6 @@ const scoreState = (score: number) => score >= 80 ? '条件较完整' : score >=
 
 export default function TechnicalWorkspace({ instrument, analysis, bars, range, onRangeChange }: TechnicalWorkspaceProps) {
   const [activeMetric, setActiveMetric] = useState<TechnicalMetricKey>('trend')
-  const [mobileView, setMobileView] = useState<'chart' | 'explanation'>('chart')
   const { series, diagnostics } = analysis
   const displayName = instrumentDisplayName(instrument)
 
@@ -97,25 +97,42 @@ export default function TechnicalWorkspace({ instrument, analysis, bars, range, 
 
   const active = definitions.find((item) => item.key === activeMetric) ?? definitions[0]
   const summary = `趋势 ${diagnostics.trend.score} 分、动量 ${diagnostics.momentum.score} 分、波动状态 ${diagnostics.volatility.score} 分；三项分别解释，不相加。`
+  const closes = bars.map((bar) => bar.close)
+  const chartColumns: ChartDataColumn[] = activeMetric === 'trend'
+    ? [
+        { label: displayName, values: closes, digits: 3 },
+        { label: 'MA20', values: series.ma20, digits: 3 },
+        { label: 'MA60', values: series.ma60, digits: 3 },
+        { label: 'MACD', values: series.macd, digits: 4 },
+        { label: '信号线', values: series.macd_signal, digits: 4 },
+        { label: 'MACD 柱', values: series.macd_hist, digits: 4 },
+      ]
+    : activeMetric === 'momentum'
+      ? [
+          { label: 'RSI 14', values: series.rsi14, digits: 1 },
+          { label: 'MACD', values: series.macd, digits: 4 },
+          { label: '信号线', values: series.macd_signal, digits: 4 },
+          { label: 'MACD 柱', values: series.macd_hist, digits: 4 },
+        ]
+      : [
+          { label: displayName, values: closes, digits: 3 },
+          { label: '布林上轨', values: series.boll_upper, digits: 3 },
+          { label: '布林中轨', values: series.boll_mid, digits: 3 },
+          { label: '布林下轨', values: series.boll_lower, digits: 3 },
+          { label: 'ATR 14 / 价格', values: series.atr14_percent, format: 'percent' },
+        ]
 
   return (
     <article className="research-workspace technical-workspace">
       <section className="instrument-summary" aria-labelledby="technical-title">
         <div>
-          <span className="lesson-eyebrow">技术状态课 · 当前体征</span>
           <h1 id="technical-title">{displayName} <span>{instrument.code}</span></h1>
           <p><strong>一句话结论：</strong>{summary}</p>
         </div>
+        <DateRangeControl range={range} onChange={onRangeChange} />
       </section>
 
-      <AnalysisRangeToolbar range={range} onChange={onRangeChange} />
-
-      <div className="score-boundary-note">
-        <WarningCircle size={20} weight="duotone" aria-hidden="true" />
-        <span><strong>本页只评当前技术状态。</strong>分数不与收益、回撤或夏普合并，也不是买卖建议。</span>
-      </div>
-
-      <div className={`learning-layout technical-learning-layout mobile-view-${mobileView}`}>
+      <div className="learning-layout technical-learning-layout">
         <nav className="metric-rail" aria-label="技术状态指标">
           {definitions.map((item) => {
             const Icon = item.icon
@@ -129,20 +146,15 @@ export default function TechnicalWorkspace({ instrument, analysis, bars, range, 
           })}
         </nav>
 
-        <div className="mobile-view-toggle" role="group" aria-label="移动端内容视图">
-          <button type="button" className={mobileView === 'chart' ? 'is-active' : ''} aria-pressed={mobileView === 'chart'} onClick={() => setMobileView('chart')}>图表</button>
-          <button type="button" className={mobileView === 'explanation' ? 'is-active' : ''} aria-pressed={mobileView === 'explanation'} onClick={() => setMobileView('explanation')}>指标解释</button>
-        </div>
-
         <section className="chart-panel" aria-live="polite">
           <div className="chart-panel-heading">
             <div><strong>{active.label}</strong><span>切换左侧分项，图表、读法与评分规则同步更新</span></div>
-            <div className="chart-legend"><span className="legend-asset" />{displayName}</div>
           </div>
           <dl className="technical-values">
             {active.values.map((item) => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}
           </dl>
           <TechnicalChart bars={bars} analysis={analysis} metric={activeMetric} instrumentName={displayName} />
+          <ChartDataTable label={`查看${active.label}图表数据`} dates={series.dates} columns={chartColumns} />
         </section>
 
         <aside className="learning-panel technical-learning-panel" aria-label={`${active.label}解释`}>
@@ -150,14 +162,15 @@ export default function TechnicalWorkspace({ instrument, analysis, bars, range, 
           <section><h2><BookOpenText size={22} weight="duotone" />指标含义</h2><p>{active.meaning}</p></section>
           <section><h2><Lightbulb size={22} weight="duotone" />怎么读</h2><p>{active.reading}</p></section>
           <section><h2><WarningCircle size={22} weight="duotone" />不要误解</h2><p>{active.misconception}</p></section>
-          <section className="score-rules"><h2><ListChecks size={22} weight="duotone" />本次得分规则</h2>
+          <details className="score-rules">
+            <summary><ListChecks size={22} weight="duotone" /><strong>本次得分规则</strong><span>{active.score.rules.filter((rule) => rule.triggered).length}/{active.score.rules.length} 项满足</span></summary>
             <ul>{active.score.rules.map((rule) => (
               <li key={rule.label} className={rule.triggered ? 'is-triggered' : ''}>
                 <span>{rule.triggered ? '已满足' : '未满足'}</span>
                 <div><strong>{rule.label} · {rule.points} 分</strong><small>{rule.explanation}</small></div>
               </li>
             ))}</ul>
-          </section>
+          </details>
         </aside>
       </div>
     </article>

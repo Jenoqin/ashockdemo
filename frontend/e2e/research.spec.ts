@@ -21,7 +21,6 @@ test.describe('Research Workflow', () => {
     
     // Verify asset profile is present
     await expect(page.getByText('跟踪指数')).toBeVisible()
-    await expect(page.getByText('演示指数')).toBeVisible() // From DemoProvider
 
     // Run backtest
     const runBtn = page.getByRole('button', { name: '运行回测' })

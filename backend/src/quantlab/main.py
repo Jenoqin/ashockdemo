@@ -20,8 +20,7 @@ def create_app() -> FastAPI:
         return {
             "status": "ok",
             "service": "quantlab-api",
-            "primary_provider": "Demo" if settings.demo_mode else "AkShare",
-            "fallback_enabled": not settings.demo_mode and bool(settings.tushare_token or settings.tushare_token_file),
+            "provider": "Tushare Pro",
         }
 
     @app.exception_handler(DataUnavailableError)
@@ -32,7 +31,7 @@ def create_app() -> FastAPI:
                 "error": {
                     "code": "DATA_UNAVAILABLE",
                     "message": f"暂时无法获取 {exc.code} 的数据",
-                    "action": "请稍后重试，或配置 TUSHARE_TOKEN 启用备用数据源"
+                    "action": "请检查 Tushare Pro 配置后重试"
                 }
             }
         )

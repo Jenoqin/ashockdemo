@@ -27,7 +27,6 @@ class ResponseMeta(BaseModel):
     sources: list[str]
     fetched_at: datetime
     cache_hit: bool
-    is_demo: bool = False
     warnings: list[str] = Field(default_factory=list)
 
 class ScoreRule(BaseModel):

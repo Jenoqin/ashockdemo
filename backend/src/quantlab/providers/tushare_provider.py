@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+import sqlite3
 from threading import Lock
 from time import monotonic
 from typing import Any
@@ -48,25 +49,112 @@ def _iso_date(value: Any) -> date | None:
         return None
 
 
+def _json_value(value: Any) -> str | int | float | bool | None:
+    value = _value(value)
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if hasattr(value, "item"):
+        scalar = value.item()
+        if scalar is None or isinstance(scalar, (str, int, float, bool)):
+            return scalar
+    return str(value)
+
+
 class TushareProvider:
     name = "Tushare Pro"
     catalog_ttl_seconds = 24 * 60 * 60
+    stale_catalog_retry_seconds = 60
 
-    def __init__(self, client):
+    def __init__(self, client, cache=None):
         self.client = client
+        self.cache = cache
         self._catalog: dict[str, Instrument] = {}
         self._stock_rows: dict[str, dict[str, Any]] = {}
         self._etf_rows: dict[str, dict[str, Any]] = {}
         self._catalog_loaded_at = 0.0
+        self._catalog_expires_at = 0.0
+        self._catalog_fetched_at: datetime | None = None
+        self._catalog_cache_hit = False
+        self._catalog_warnings: list[str] = []
         self._lock = Lock()
 
+    @staticmethod
+    def _catalog_age_seconds(fetched_at: datetime) -> float:
+        if fetched_at.tzinfo is None:
+            fetched_at = fetched_at.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc) - fetched_at).total_seconds())
+
+    def _hydrate_catalog(
+        self,
+        entries: list[tuple[Instrument, dict]],
+        fetched_at: datetime,
+        *,
+        cache_hit: bool,
+        warnings: list[str] | None = None,
+        ttl_seconds: float | None = None,
+    ) -> dict[str, Instrument]:
+        self._catalog = {instrument.code: instrument for instrument, _ in entries}
+        self._stock_rows = {
+            instrument.code: metadata
+            for instrument, metadata in entries
+            if instrument.asset_type == "equity"
+        }
+        self._etf_rows = {
+            instrument.code: metadata
+            for instrument, metadata in entries
+            if instrument.asset_type == "etf"
+        }
+        now = monotonic()
+        self._catalog_loaded_at = now
+        self._catalog_expires_at = now + (
+            self.catalog_ttl_seconds if ttl_seconds is None else ttl_seconds
+        )
+        self._catalog_fetched_at = fetched_at
+        self._catalog_cache_hit = cache_hit
+        self._catalog_warnings = list(warnings or [])
+        return self._catalog
+
+    def catalog_meta(self) -> dict[str, Any]:
+        return {
+            "sources": [self.name],
+            "fetched_at": self._catalog_fetched_at or datetime.now(timezone.utc),
+            "cache_hit": self._catalog_cache_hit,
+            "warnings": list(self._catalog_warnings),
+        }
+
+    def _require_client(self, code: str) -> None:
+        if self.client is None:
+            raise ProviderError(
+                self.name,
+                code,
+                "未配置 TUSHARE_TOKEN 或有效的 TUSHARE_TOKEN_FILE",
+            )
+
     def _load_catalog(self) -> dict[str, Instrument]:
-        if self._catalog and monotonic() - self._catalog_loaded_at < self.catalog_ttl_seconds:
+        if self._catalog and monotonic() < self._catalog_expires_at:
+            self._catalog_cache_hit = True
             return self._catalog
         with self._lock:
-            if self._catalog and monotonic() - self._catalog_loaded_at < self.catalog_ttl_seconds:
+            if self._catalog and monotonic() < self._catalog_expires_at:
+                self._catalog_cache_hit = True
                 return self._catalog
+
+            cached = self.cache.get_instrument_catalog(self.name) if self.cache else None
+            if cached:
+                cached_entries, cached_at = cached
+                remaining_ttl = self.catalog_ttl_seconds - self._catalog_age_seconds(cached_at)
+                if remaining_ttl > 0:
+                    return self._hydrate_catalog(
+                        cached_entries,
+                        cached_at,
+                        cache_hit=True,
+                        ttl_seconds=remaining_ttl,
+                    )
+
             try:
+                self._require_client("catalog")
                 stocks = self.client.stock_basic(
                     exchange="", list_status="L",
                     fields="ts_code,symbol,name,fullname,area,industry,list_date",
@@ -75,6 +163,16 @@ class TushareProvider:
                     fields="ts_code,csname,extname,index_code,index_name,mgr,list_date",
                 )
             except Exception as exc:
+                if cached:
+                    return self._hydrate_catalog(
+                        cached[0],
+                        cached[1],
+                        cache_hit=True,
+                        warnings=["STALE_CACHE"],
+                        ttl_seconds=self.stale_catalog_retry_seconds,
+                    )
+                if isinstance(exc, ProviderError):
+                    raise
                 raise ProviderError(self.name, "catalog", str(exc)) from exc
 
             catalog: dict[str, Instrument] = {}
@@ -97,7 +195,10 @@ class TushareProvider:
                             asset_type="equity",
                             exchange=norm.split(".")[1],
                         )
-                        stock_rows[norm] = row.to_dict()
+                        stock_rows[norm] = {
+                            key: _json_value(row.get(key))
+                            for key in ("industry", "list_date")
+                        }
             if etfs is not None:
                 for _, row in etfs.iterrows():
                     code = str(row.get("ts_code", "")).upper()
@@ -108,14 +209,42 @@ class TushareProvider:
                         except ValueError:
                             continue
                         catalog[norm] = Instrument(code=norm, name=str(name), asset_type="etf", exchange=norm.split(".")[1])
-                        etf_rows[norm] = row.to_dict()
+                        etf_rows[norm] = {
+                            key: _json_value(row.get(key))
+                            for key in ("index_name", "index_code", "mgr", "list_date")
+                        }
             if not catalog:
+                if cached:
+                    return self._hydrate_catalog(
+                        cached[0],
+                        cached[1],
+                        cache_hit=True,
+                        warnings=["STALE_CACHE"],
+                        ttl_seconds=self.stale_catalog_retry_seconds,
+                    )
                 raise ProviderError(self.name, "catalog", "证券主数据为空")
-            self._catalog = catalog
-            self._stock_rows = stock_rows
-            self._etf_rows = etf_rows
-            self._catalog_loaded_at = monotonic()
-            return catalog
+            fetched_at = datetime.now(timezone.utc)
+            entries = [
+                (
+                    instrument,
+                    stock_rows.get(code) or etf_rows.get(code) or {},
+                )
+                for code, instrument in catalog.items()
+            ]
+            warnings: list[str] = []
+            if self.cache:
+                try:
+                    self.cache.replace_instrument_catalog(
+                        self.name, entries, fetched_at
+                    )
+                except (sqlite3.Error, ValueError):
+                    warnings.append("CACHE_WRITE_FAILED")
+            return self._hydrate_catalog(
+                entries,
+                fetched_at,
+                cache_hit=False,
+                warnings=warnings,
+            )
 
     def search(self, query: str) -> list[Instrument]:
         text = query.strip().upper()
@@ -142,6 +271,59 @@ class TushareProvider:
         if instrument is None:
             raise InstrumentNotFoundError(norm)
         return instrument
+
+    def get_trade_calendar(
+        self, exchange: str, start: date, end: date
+    ) -> dict[date, bool]:
+        self._require_client(f"calendar:{exchange}")
+        if exchange not in {"SSE", "SZSE"}:
+            raise ProviderError(self.name, exchange, "不支持的交易所日历")
+        try:
+            frame = self.client.trade_cal(
+                exchange=exchange,
+                start_date=start.strftime("%Y%m%d"),
+                end_date=end.strftime("%Y%m%d"),
+                fields="exchange,cal_date,is_open",
+            )
+        except Exception as exc:
+            raise ProviderError(self.name, exchange, str(exc)) from exc
+        if frame is None or frame.empty:
+            raise ProviderError(self.name, exchange, "交易日历为空")
+        required = {"cal_date", "is_open"}
+        if not required.issubset(frame.columns):
+            raise ProviderError(self.name, exchange, "交易日历字段不完整")
+        if "exchange" in frame.columns and any(
+            str(value).upper() != exchange for value in frame["exchange"]
+        ):
+            raise ProviderError(self.name, exchange, "交易日历包含错误交易所")
+        parsed = pd.to_datetime(frame["cal_date"].astype(str), errors="coerce")
+        if parsed.isna().any():
+            raise ProviderError(self.name, exchange, "交易日历日期无效")
+        days = [value.date() for value in parsed]
+        if len(days) != len(set(days)):
+            raise ProviderError(self.name, exchange, "交易日历包含重复日期")
+        if any(day < start or day > end for day in days):
+            raise ProviderError(self.name, exchange, "交易日历包含区间外日期")
+        expected = {
+            start + timedelta(days=offset)
+            for offset in range((end - start).days + 1)
+        }
+        if set(days) != expected:
+            raise ProviderError(self.name, exchange, "交易日历日期不完整")
+        statuses: list[bool] = []
+        for value in frame["is_open"]:
+            if _value(value) not in (0, 1, "0", "1"):
+                raise ProviderError(self.name, exchange, "交易日历状态无效")
+            statuses.append(bool(int(value)))
+        return dict(zip(days, statuses, strict=True))
+
+    def get_listing_date(self, code: str) -> date | None:
+        norm = normalize_code(code)
+        self._load_catalog()
+        row = self._stock_rows.get(norm) or self._etf_rows.get(norm)
+        if row is None:
+            raise ProviderError(self.name, norm, "证券不在基础信息目录中")
+        return _iso_date(row.get("list_date"))
 
     def get_equity_profile(self, code: str) -> dict[str, Any]:
         norm = normalize_code(code)
@@ -252,8 +434,37 @@ class TushareProvider:
             "holdings": holding_list,
         }
 
+    def get_suspension_dates(
+        self, code: str, start: date, end: date
+    ) -> set[date]:
+        norm = normalize_code(code)
+        self._require_client(norm)
+        try:
+            frame = self.client.suspend_d(
+                ts_code=norm,
+                start_date=start.strftime("%Y%m%d"),
+                end_date=end.strftime("%Y%m%d"),
+                fields="ts_code,trade_date,suspend_type",
+            )
+        except Exception as exc:
+            raise ProviderError(self.name, norm, str(exc)) from exc
+        if frame is None or frame.empty:
+            return set()
+        if not {"ts_code", "trade_date"}.issubset(frame.columns):
+            raise ProviderError(self.name, norm, "停复牌响应字段不完整")
+        if any(str(value).upper() != norm for value in frame["ts_code"]):
+            raise ProviderError(self.name, norm, "停复牌响应包含错误代码")
+        parsed = pd.to_datetime(frame["trade_date"].astype(str), errors="coerce")
+        if parsed.isna().any():
+            raise ProviderError(self.name, norm, "停复牌响应日期无效")
+        days = {value.date() for value in parsed}
+        if any(day < start or day > end for day in days):
+            raise ProviderError(self.name, norm, "停复牌响应包含区间外日期")
+        return days
+
     def get_daily(self, code: str, start: date, end: date) -> list[PriceBar]:
         norm = normalize_code(code)
+        self._require_client(norm)
         digits = norm.split(".")[0]
         start_date = start.strftime("%Y%m%d")
         end_date = end.strftime("%Y%m%d")
@@ -270,19 +481,71 @@ class TushareProvider:
             return []
         if factors is None or factors.empty:
             raise ProviderError(self.name, norm, "复权因子为空")
-        frame = frame.merge(factors[["trade_date", "adj_factor"]], on="trade_date", how="left")
-        if frame["adj_factor"].isna().any():
-            raise ProviderError(self.name, norm, "复权因子不完整")
-        for column in ("open", "high", "low", "close"):
-            frame[column] = frame[column].astype(float) * frame["adj_factor"].astype(float)
-        frame["trade_date"] = pd.to_datetime(frame["trade_date"])
-        frame = frame.sort_values("trade_date").drop_duplicates("trade_date", keep="last")
-        fetched = datetime.now(timezone.utc)
-        return [
-            PriceBar(
-                code=norm, trade_date=row["trade_date"].date(), open=float(row["open"]), high=float(row["high"]),
-                low=float(row["low"]), close=float(row["close"]), volume=float(row["vol"]),
-                amount=_float(row.get("amount"), 1e3), source=self.name, fetched_at=fetched,
+        required = {
+            "ts_code", "trade_date", "open", "high", "low", "close", "vol"
+        }
+        if not required.issubset(frame.columns):
+            raise ProviderError(self.name, norm, "行情响应字段不完整")
+        if not {"trade_date", "adj_factor"}.issubset(factors.columns):
+            raise ProviderError(self.name, norm, "复权因子字段不完整")
+        if any(str(value).upper() != norm for value in frame["ts_code"]):
+            raise ProviderError(self.name, norm, "行情响应包含错误代码")
+
+        raw_dates = frame["trade_date"].astype(str)
+        parsed_dates = pd.to_datetime(raw_dates, errors="coerce")
+        if parsed_dates.isna().any():
+            raise ProviderError(self.name, norm, "行情响应日期无效")
+        days = [value.date() for value in parsed_dates]
+        if len(days) != len(set(days)):
+            raise ProviderError(self.name, norm, "行情响应包含重复日期")
+        if any(day < start or day > end for day in days):
+            raise ProviderError(self.name, norm, "行情响应包含区间外日期")
+
+        factor_dates = factors["trade_date"].astype(str)
+        parsed_factor_dates = pd.to_datetime(factor_dates, errors="coerce")
+        if parsed_factor_dates.isna().any():
+            raise ProviderError(self.name, norm, "复权因子日期无效")
+        factor_days = [value.date() for value in parsed_factor_dates]
+        if len(factor_days) != len(set(factor_days)):
+            raise ProviderError(self.name, norm, "复权因子包含重复日期")
+        if any(day < start or day > end for day in factor_days):
+            raise ProviderError(self.name, norm, "复权因子包含区间外日期")
+        if "ts_code" in factors.columns and any(
+            str(value).upper() != norm for value in factors["ts_code"]
+        ):
+            raise ProviderError(self.name, norm, "复权因子包含错误代码")
+        try:
+            frame = frame.merge(
+                factors[["trade_date", "adj_factor"]],
+                on="trade_date",
+                how="left",
+                validate="one_to_one",
             )
-            for _, row in frame.iterrows()
-        ]
+            if frame["adj_factor"].isna().any():
+                raise ProviderError(self.name, norm, "复权因子不完整")
+            for column in ("open", "high", "low", "close"):
+                frame[column] = (
+                    frame[column].astype(float) * frame["adj_factor"].astype(float)
+                )
+            frame["trade_date"] = parsed_dates
+            frame = frame.sort_values("trade_date")
+            fetched = datetime.now(timezone.utc)
+            return [
+                PriceBar(
+                    code=norm,
+                    trade_date=row["trade_date"].date(),
+                    open=float(row["open"]),
+                    high=float(row["high"]),
+                    low=float(row["low"]),
+                    close=float(row["close"]),
+                    volume=float(row["vol"]),
+                    amount=_float(row.get("amount"), 1e3),
+                    source=self.name,
+                    fetched_at=fetched,
+                )
+                for _, row in frame.iterrows()
+            ]
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise ProviderError(self.name, norm, f"行情响应无效: {exc}") from exc

@@ -4,13 +4,13 @@ const money = (value: number | null) => value === null ? '暂无数据' : `${(va
 const ratio = (value: number | null) => value === null ? '暂无数据' : value.toFixed(2)
 
 export default function AssetProfileView({ profile, meta }: { profile: AssetProfile; meta?: ResponseMeta }) {
-  const sourceNote = meta ? `${meta.is_demo ? '演示数据' : meta.sources.join('、')} · 更新于 ${new Date(meta.fetched_at).toLocaleDateString('zh-CN')}` : null
+  const sourceNote = meta ? `${meta.sources.join('、')} · 更新于 ${new Date(meta.fetched_at).toLocaleDateString('zh-CN')}` : null
 
   if (profile.asset_type === 'etf' && profile.etf) {
     const etf = profile.etf
     return (
       <section className="asset-profile" aria-label="ETF 基础资料">
-        <div className="profile-meta"><span className={meta?.is_demo ? 'demo-badge' : ''}>{sourceNote}</span><span>资料字段为空时不使用估算值替代</span></div>
+        <div className="profile-meta"><span>{sourceNote}</span><span>资料字段为空时不使用估算值替代</span></div>
         {etf.availability.status === 'unavailable' ? <p className="profile-warning">{etf.availability.reason}</p> : null}
         <dl className="profile-facts">
           <div><dt>跟踪指数</dt><dd>{etf.tracking_index || '暂无数据'}</dd></div>
@@ -34,7 +34,7 @@ export default function AssetProfileView({ profile, meta }: { profile: AssetProf
     const equity = profile.equity
     return (
       <section className="asset-profile" aria-label="股票基础资料">
-        <div className="profile-meta"><span className={meta?.is_demo ? 'demo-badge' : ''}>{sourceNote}</span><span>估值随市场变化，请结合数据日期查看</span></div>
+        <div className="profile-meta"><span>{sourceNote}</span><span>估值随市场变化，请结合数据日期查看</span></div>
         {equity.availability.status === 'unavailable' ? <p className="profile-warning">{equity.availability.reason}</p> : null}
         <dl className="profile-facts">
           <div><dt>所属行业</dt><dd>{equity.industry || '暂无数据'}</dd></div>

@@ -8,16 +8,15 @@ import type {
 } from '../api/types'
 
 export const meta: ResponseMeta = {
-  sources: ['AkShare'],
+  sources: ['Tushare Pro'],
   fetched_at: '2026-08-08T00:00:00Z',
   cache_hit: false,
-  is_demo: false,
   warnings: []
 }
 
 export const bars: PriceBar[] = [
-  { code: '512480.SH', trade_date: '2026-01-05', open: 1.2, high: 1.26, low: 1.19, close: 1.25, volume: 1000, amount: 1250, source: 'AkShare', fetched_at: '2026-08-08T00:00:00Z' },
-  { code: '512480.SH', trade_date: '2026-01-06', open: 1.25, high: 1.28, low: 1.22, close: 1.27, volume: 1100, amount: 1397, source: 'AkShare', fetched_at: '2026-08-08T00:00:00Z' }
+  { code: '512480.SH', trade_date: '2026-01-05', open: 1.2, high: 1.26, low: 1.19, close: 1.25, volume: 1000, amount: 1250, source: 'Tushare Pro', fetched_at: '2026-08-08T00:00:00Z' },
+  { code: '512480.SH', trade_date: '2026-01-06', open: 1.25, high: 1.28, low: 1.22, close: 1.27, volume: 1100, amount: 1397, source: 'Tushare Pro', fetched_at: '2026-08-08T00:00:00Z' }
 ]
 
 export const analysis: AnalysisResult = {

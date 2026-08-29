@@ -1,175 +1,360 @@
-from datetime import date, datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime, timedelta, timezone
 import time
+
 import pytest
+
 from quantlab.cache import MarketCache
+from quantlab.errors import DataUnavailableError
 from quantlab.models import PriceBar
 from quantlab.providers.base import ProviderError
+from quantlab.providers.tushare_provider import TushareProvider
 from quantlab.services.market_data import MarketDataService
 
+
+DATASET = "Tushare Pro"
+ETF = "512480.SH"
+
+
+def make_bar(
+    trade_date: date,
+    *,
+    code: str = ETF,
+    close: float = 1.0,
+) -> PriceBar:
+    return PriceBar(
+        code=code,
+        trade_date=trade_date,
+        open=close,
+        high=close + 0.02,
+        low=close - 0.02,
+        close=close,
+        volume=1000,
+        amount=1000,
+        source=DATASET,
+        fetched_at=datetime(2026, 8, 8, tzinfo=timezone.utc),
+    )
+
+
 class FakeProvider:
-    def __init__(self, name, bars=None, error=None, delay=0.0):
-        self.name = name
+    name = DATASET
+
+    def __init__(
+        self,
+        bars=None,
+        *,
+        daily_error=None,
+        calendar_error=None,
+        listing_date=date(2000, 1, 1),
+        delay=0.0,
+    ):
         self.bars = bars or []
-        self.error = error
+        self.daily_error = daily_error
+        self.calendar_error = calendar_error
+        self.listing_date = listing_date
         self.delay = delay
-        self.calls = []
+        self.responses = {}
+        self.open_overrides = {}
+        self.suspended = set()
+        self.daily_calls = []
+        self.calendar_calls = []
+        self.listing_calls = []
+
+    def get_trade_calendar(self, exchange, start, end):
+        self.calendar_calls.append((exchange, start, end))
+        if self.calendar_error:
+            raise ProviderError(self.name, exchange, self.calendar_error)
+        return {
+            day: self.open_overrides.get(day, day.weekday() < 5)
+            for day in days(start, end)
+        }
+
+    def get_listing_date(self, code):
+        self.listing_calls.append(code)
+        return self.listing_date
 
     def get_daily(self, code, start, end):
-        self.calls.append((code, start, end))
+        self.daily_calls.append((code, start, end))
         if self.delay:
             time.sleep(self.delay)
-        if self.error:
-            raise ProviderError(self.name, code, self.error)
-        return [row.model_copy(update={"source": self.name}) for row in self.bars if start <= row.trade_date <= end]
+        response = self.responses.get((start, end))
+        if isinstance(response, Exception):
+            raise response
+        if response is not None:
+            return response
+        if self.daily_error:
+            raise ProviderError(self.name, code, self.daily_error)
+        return [bar for bar in self.bars if start <= bar.trade_date <= end]
+
+    def get_suspension_dates(self, code, start, end):
+        return {day for day in self.suspended if start <= day <= end}
+
+
+def days(start: date, end: date):
+    return [start + timedelta(days=i) for i in range((end - start).days + 1)]
+
 
 @pytest.fixture
 def cache(tmp_path):
     return MarketCache(tmp_path / "market.db")
 
-def make_bars(source="fake", close_offset=0.0):
-    fetched = datetime(2026, 8, 8, tzinfo=timezone.utc)
-    return [
-        PriceBar(
-            code="512480.SH", trade_date=date(2026, 1, 1) + timedelta(days=index),
-            open=1.0 + index * 0.01, high=1.03 + index * 0.01,
-            low=0.99 + index * 0.01, close=1.01 + index * 0.01 + close_offset,
-            volume=1000 + index, amount=1000, source=source, fetched_at=fetched,
-        )
-        for index in range(25)
-    ]
 
-@pytest.fixture
-def valid_bars():
-    return make_bars()
-
-@pytest.fixture
-def primary_bars():
-    return make_bars("akshare")
-
-@pytest.fixture
-def fallback_bars():
-    return make_bars("tushare", close_offset=0.01)
-
-def test_primary_failure_uses_fallback_and_reports_warning(cache, valid_bars):
-    primary = FakeProvider("akshare", error="network unavailable")
-    fallback = FakeProvider("tushare", bars=valid_bars)
-    result = MarketDataService(cache, primary, fallback).get_daily(
-        "512480", date(2026,1,1), date(2026,1,31)
+def seed_complete(cache, code, start, end, bars, *, open_days=None, no_bars=None):
+    exchange = "SZSE" if code.endswith(".SZ") else "SSE"
+    calendar = {
+        day: (day in open_days if open_days is not None else day.weekday() < 5)
+        for day in days(start, end)
+    }
+    cache.commit_verified(
+        DATASET,
+        code,
+        {exchange: calendar},
+        bars,
+        no_bars or {},
     )
-    assert result.meta.sources == ["tushare"]
-    assert "PRIMARY_PROVIDER_FAILED" in result.meta.warnings
-    expected = [b.model_copy(update={"source": "tushare"}) for b in valid_bars]
-    for r, e in zip(result.bars, expected):
-        assert r.trade_date == e.trade_date
-        assert r.close == e.close
-        assert r.source == e.source
 
-def test_both_fail_returns_cache_with_stale_warning(cache, valid_bars):
-    cached = [bar.model_copy(update={"source": "akshare"}) for bar in valid_bars]
-    cache.upsert_bars("akshare", cached)
-    service = MarketDataService(cache, FakeProvider("akshare", error="down"), FakeProvider("tushare", error="denied"))
-    result = service.get_daily("512480.SH", date(2026,1,1), date(2026,1,31), refresh=True)
+
+def test_complete_verified_cache_is_used_without_provider(cache):
+    start, end = date(2026, 8, 3), date(2026, 8, 5)
+    bars = [make_bar(day) for day in days(start, end)]
+    seed_complete(cache, ETF, start, end, bars)
+    provider = FakeProvider(daily_error="must not be called", calendar_error="no")
+
+    result = MarketDataService(cache, provider).get_daily(ETF, start, end)
+
     assert result.meta.cache_hit is True
-    assert "STALE_CACHE" in result.meta.warnings
+    assert result.meta.warnings == []
+    assert provider.daily_calls == []
+    assert provider.calendar_calls == []
+    assert provider.listing_calls == []
 
 
-def test_cached_demo_rows_are_not_mixed_with_live_fallback(cache, valid_bars):
-    demo_rows = [bar.model_copy(update={"source": "Demo"}) for bar in valid_bars]
-    cache.upsert_bars("Demo", demo_rows)
-    cache.mark_synced("Demo", "512480.SH", date(2026, 1, 1), date(2026, 1, 31))
+def test_complete_verified_cache_works_with_unconfigured_tushare(cache):
+    start, end = date(2026, 8, 3), date(2026, 8, 5)
+    bars = [make_bar(day) for day in days(start, end)]
+    seed_complete(cache, ETF, start, end, bars)
+
+    result = MarketDataService(cache, TushareProvider(None)).get_daily(
+        ETF, start, end
+    )
+
+    assert result.bars == bars
+    assert result.meta.cache_hit is True
+
+
+def test_internal_gap_is_rechecked_and_filled_before_success(cache):
+    start, gap, end = date(2026, 8, 3), date(2026, 8, 4), date(2026, 8, 5)
+    provider = FakeProvider()
+    provider.responses[(start, end)] = [make_bar(start), make_bar(end)]
+    provider.responses[(gap, gap)] = [make_bar(gap)]
+
+    result = MarketDataService(cache, provider).get_daily(ETF, start, end)
+
+    assert [bar.trade_date for bar in result.bars] == days(start, end)
+    assert provider.daily_calls == [(ETF, start, end), (ETF, gap, gap)]
+    assert cache.get_no_bar_dates(DATASET, ETF, start, end) == {}
+
+
+def test_internal_gap_empty_is_recorded_only_after_single_day_confirmation(cache):
+    start, gap, end = date(2026, 8, 3), date(2026, 8, 4), date(2026, 8, 5)
+    provider = FakeProvider()
+    provider.responses[(start, end)] = [make_bar(start), make_bar(end)]
+    provider.responses[(gap, gap)] = []
+
+    result = MarketDataService(cache, provider).get_daily(ETF, start, end)
+
+    assert [bar.trade_date for bar in result.bars] == [start, end]
+    assert cache.get_no_bar_dates(DATASET, ETF, start, end) == {
+        gap: "provider_confirmed_empty"
+    }
+    provider.daily_calls.clear()
+    assert MarketDataService(cache, provider).get_daily(ETF, start, end).meta.cache_hit
+    assert provider.daily_calls == []
+
+
+def test_failed_gap_confirmation_commits_no_partial_facts(cache):
+    start, gap, end = date(2026, 8, 3), date(2026, 8, 4), date(2026, 8, 5)
+    provider = FakeProvider()
+    provider.responses[(start, end)] = [make_bar(start), make_bar(end)]
+    provider.responses[(gap, gap)] = ProviderError(DATASET, ETF, "down")
+
+    with pytest.raises(DataUnavailableError):
+        MarketDataService(cache, provider).get_daily(ETF, start, end)
+
+    assert cache.get_bars(DATASET, ETF, start, end) == []
+    assert cache.get_calendar("SSE", start, end) == {}
+    assert cache.get_no_bar_dates(DATASET, ETF, start, end) == {}
+
+
+def test_failed_partial_refresh_preserves_every_cached_row(cache):
+    start, gap, end = date(2026, 8, 3), date(2026, 8, 4), date(2026, 8, 5)
+    original = [
+        make_bar(day, close=1 + i * 0.01)
+        for i, day in enumerate(days(start, end))
+    ]
+    seed_complete(cache, ETF, start, end, original)
+    provider = FakeProvider()
+    provider.responses[(start, end)] = [
+        make_bar(start, close=1.10),
+        make_bar(end, close=1.20),
+    ]
+    provider.responses[(gap, gap)] = ProviderError(DATASET, ETF, "down")
+
+    result = MarketDataService(cache, provider).get_daily(
+        ETF, start, end, refresh=True
+    )
+
+    assert result.meta.warnings == ["STALE_CACHE"]
+    assert result.bars == original
+    assert cache.get_bars(DATASET, ETF, start, end) == original
+
+
+@pytest.mark.parametrize(
+    "bad_rows",
+    [
+        [make_bar(date(2026, 8, 2))],
+        [make_bar(date(2026, 8, 3), code="600519.SH")],
+        [make_bar(date(2026, 8, 3)), make_bar(date(2026, 8, 3))],
+    ],
+)
+def test_invalid_provider_response_is_rejected_without_cache_mutation(cache, bad_rows):
+    target = date(2026, 8, 3)
+    provider = FakeProvider()
+    provider.responses[(target, target)] = bad_rows
+
+    with pytest.raises(DataUnavailableError):
+        MarketDataService(cache, provider).get_daily(ETF, target, target)
+
+    assert cache.get_bars(DATASET, ETF, target, target) == []
+    assert cache.get_calendar("SSE", target, target) == {}
+
+
+def test_weekend_holiday_and_pre_listing_dates_need_no_daily_query(cache):
+    start, end = date(2020, 8, 1), date(2020, 8, 3)
+    provider = FakeProvider(listing_date=date(2020, 8, 4))
+
+    result = MarketDataService(cache, provider).get_daily(ETF, start, end)
+
+    assert result.bars == []
+    assert provider.daily_calls == []
+    assert cache.get_no_bar_dates(DATASET, ETF, start, end) == {
+        end: "not_listed"
+    }
+
+
+def test_stock_suspension_reason_is_preserved(cache):
+    code = "600519.SH"
+    target = date(2026, 8, 3)
+    provider = FakeProvider()
+    provider.suspended.add(target)
+
+    result = MarketDataService(cache, provider).get_daily(code, target, target)
+
+    assert result.bars == []
+    assert cache.get_no_bar_dates(DATASET, code, target, target) == {
+        target: "suspended"
+    }
+    assert len(provider.daily_calls) == 2
+
+
+def test_etf_historical_empty_is_confirmed_by_single_day_query(cache):
+    target = date(2026, 8, 3)
+    provider = FakeProvider()
+
+    result = MarketDataService(cache, provider).get_daily(ETF, target, target)
+
+    assert result.bars == []
+    assert cache.get_no_bar_dates(DATASET, ETF, target, target) == {
+        target: "provider_confirmed_empty"
+    }
+    assert len(provider.daily_calls) == 2
+
+
+def test_current_open_day_empty_remains_retryable_without_cooldown(cache):
+    target = date.today()
+    provider = FakeProvider()
+    provider.open_overrides[target] = True
+
+    with pytest.raises(DataUnavailableError):
+        MarketDataService(cache, provider).get_daily(ETF, target, target)
+
+    assert cache.get_calendar("SSE", target, target) == {}
+    assert cache.get_no_bar_dates(DATASET, ETF, target, target) == {}
+    assert cache.provider_in_cooldown(ETF, DATASET) is False
+
+
+def test_provider_failure_rejects_partial_stale_cache(cache):
+    start, end = date(2026, 8, 3), date(2026, 8, 5)
+    cache.upsert_bars(DATASET, [make_bar(start)])
+
+    with pytest.raises(DataUnavailableError):
+        MarketDataService(cache, FakeProvider(calendar_error="down")).get_daily(
+            ETF, start, end
+        )
+
+
+def test_provider_failure_uses_complete_verified_stale_cache_on_refresh(cache):
+    start, end = date(2026, 8, 3), date(2026, 8, 5)
+    bars = [make_bar(day) for day in days(start, end)]
+    seed_complete(cache, ETF, start, end, bars)
 
     result = MarketDataService(
-        cache,
-        FakeProvider("akshare", error="down"),
-        FakeProvider("tushare", bars=valid_bars),
-    ).get_daily("512480.SH", date(2026, 1, 1), date(2026, 1, 31))
+        cache, FakeProvider(daily_error="down")
+    ).get_daily(ETF, start, end, refresh=True)
 
-    assert result.meta.sources == ["tushare"]
-    assert {bar.source for bar in result.bars} == {"tushare"}
-    assert len(result.bars) == len(valid_bars)
+    assert result.bars == bars
+    assert result.meta.cache_hit is True
+    assert result.meta.warnings == ["STALE_CACHE"]
 
 
-def test_complete_fallback_cache_bypasses_primary_provider(cache, valid_bars):
-    fallback_rows = [bar.model_copy(update={"source": "tushare"}) for bar in valid_bars]
-    cache.upsert_bars("tushare", fallback_rows)
-    cache.mark_synced("tushare", "512480.SH", date(2026, 1, 1), date(2026, 1, 31))
-    primary = FakeProvider("akshare", error="must not be called")
-    fallback = FakeProvider("tushare", bars=valid_bars)
+def test_future_range_is_truncated_without_provider_call(cache):
+    start = date.today() + timedelta(days=1)
+    end = start + timedelta(days=10)
+    provider = FakeProvider(daily_error="must not call", calendar_error="no")
 
-    result = MarketDataService(cache, primary, fallback).get_daily(
-        "512480.SH", date(2026, 1, 1), date(2026, 1, 31)
+    result = MarketDataService(cache, provider).get_daily(ETF, start, end)
+
+    assert result.bars == []
+    assert result.meta.warnings == ["FUTURE_RANGE_TRUNCATED"]
+    assert provider.daily_calls == []
+    assert provider.calendar_calls == []
+
+
+def test_bj_security_reuses_sse_calendar(cache):
+    code = "800001.BJ"
+    target = date(2026, 8, 3)
+    provider = FakeProvider(bars=[make_bar(target, code=code)])
+
+    MarketDataService(cache, provider).get_daily(code, target, target)
+
+    assert provider.calendar_calls[0][0] == "SSE"
+
+
+def test_daily_requests_are_chunked_to_at_most_366_calendar_days(cache):
+    start, end = date(2024, 1, 1), date(2025, 12, 31)
+    requested_days = [day for day in days(start, end) if day.weekday() < 5]
+    provider = FakeProvider(bars=[make_bar(day) for day in requested_days])
+
+    MarketDataService(cache, provider).get_daily(ETF, start, end)
+
+    assert len(provider.daily_calls) >= 2
+    assert all(
+        (range_end - range_start).days <= 365
+        for _, range_start, range_end in provider.daily_calls
     )
 
-    assert result.meta.cache_hit is True
-    assert result.meta.sources == ["tushare"]
-    assert result.meta.warnings == []
-    assert primary.calls == []
-    assert fallback.calls == []
 
-
-def test_recently_successful_fallback_fills_next_gap_before_primary(cache, valid_bars):
-    primary = FakeProvider("akshare", error="down")
-    fallback = FakeProvider("tushare", bars=valid_bars)
-    service = MarketDataService(cache, primary, fallback)
-
-    service.get_daily("512480.SH", date(2026, 1, 1), date(2026, 1, 10))
-    result = service.get_daily("512480.SH", date(2026, 1, 1), date(2026, 1, 20))
-
-    assert cache.get_preferred_provider("512480.SH") == "tushare"
-    assert result.meta.sources == ["tushare"]
-    assert len(primary.calls) == 1
-    assert len(fallback.calls) == 2
-
-
-def test_parallel_identical_requests_share_one_provider_fetch(cache, valid_bars):
-    primary = FakeProvider("akshare", bars=valid_bars, delay=0.05)
-    service = MarketDataService(cache, primary)
-
-    def load():
-        return service.get_daily(
-            "512480.SH", date(2026, 1, 1), date(2026, 1, 20)
-        )
+def test_parallel_identical_requests_share_one_provider_fetch(cache):
+    start, end = date(2026, 8, 3), date(2026, 8, 7)
+    provider = FakeProvider(
+        bars=[make_bar(day) for day in days(start, end)], delay=0.03
+    )
+    service = MarketDataService(cache, provider)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(lambda _: load(), range(2)))
+        results = list(pool.map(
+            lambda _: service.get_daily(ETF, start, end), range(2)
+        ))
 
-    assert len(primary.calls) == 1
+    assert len(provider.daily_calls) == 1
     assert {result.meta.cache_hit for result in results} == {False, True}
-    assert all(len(result.bars) == 20 for result in results)
-
-
-def test_boundary_jump_in_combined_cache_is_rejected(cache):
-    primary_history = make_bars("akshare")[:2]
-    cache.upsert_bars("akshare", primary_history)
-    cache.mark_synced(
-        "akshare",
-        "512480.SH",
-        primary_history[0].trade_date,
-        primary_history[-1].trade_date,
-    )
-    fetched = primary_history[-1].model_copy(update={
-        "trade_date": date(2026, 1, 3),
-        "open": 4.0,
-        "high": 4.1,
-        "low": 3.9,
-        "close": 4.0,
-    })
-    fallback_bars = make_bars("tushare")[:3]
-
-    result = MarketDataService(
-        cache,
-        FakeProvider("akshare", bars=[fetched]),
-        FakeProvider("tushare", bars=fallback_bars),
-    ).get_daily("512480.SH", date(2026, 1, 1), date(2026, 1, 3))
-
-    assert result.meta.sources == ["tushare"]
-    assert "PRIMARY_PROVIDER_FAILED" in result.meta.warnings
-    assert {bar.source for bar in result.bars} == {"tushare"}
-    assert len(cache.get_bars("akshare", "512480.SH", date(2026, 1, 1), date(2026, 1, 3))) == 2
-
-def test_manual_refresh_cross_checks_last_twenty_sessions(cache, primary_bars, fallback_bars):
-    result = MarketDataService(cache, FakeProvider("akshare", bars=primary_bars), FakeProvider("tushare", bars=fallback_bars)).get_daily(
-        "512480.SH", date(2026,1,1), date(2026,3,31), refresh=True
-    )
-    assert any(item.startswith("SOURCE_DIFFERENCE:") for item in result.meta.warnings)

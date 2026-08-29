@@ -1,9 +1,13 @@
+import json
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Mapping, Tuple
 
-from quantlab.models import PriceBar
+from quantlab.models import AssetProfile, Instrument, PriceBar
+
+
+SYNC_POLICY_VERSION = "tushare-calendar-v2"
 
 
 class MarketCache:
@@ -42,6 +46,25 @@ class MarketCache:
                 )
             """)
             conn.execute("""
+                CREATE TABLE IF NOT EXISTS market_calendar (
+                    exchange TEXT NOT NULL,
+                    cal_date TEXT NOT NULL,
+                    is_open INTEGER NOT NULL CHECK (is_open IN (0, 1)),
+                    fetched_at TEXT NOT NULL,
+                    PRIMARY KEY (exchange, cal_date)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS no_bar_dates (
+                    dataset TEXT NOT NULL,
+                    code TEXT NOT NULL,
+                    trade_date TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    confirmed_at TEXT NOT NULL,
+                    PRIMARY KEY (dataset, code, trade_date)
+                )
+            """)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS provider_state (
                     code TEXT NOT NULL,
                     data_kind TEXT NOT NULL,
@@ -54,6 +77,151 @@ class MarketCache:
                     PRIMARY KEY (code, data_kind, adjustment, provider)
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS cache_metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS instrument_catalog (
+                    provider TEXT NOT NULL,
+                    code TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    full_name TEXT,
+                    asset_type TEXT NOT NULL
+                        CHECK (asset_type IN ('etf', 'equity')),
+                    exchange TEXT NOT NULL
+                        CHECK (exchange IN ('SH', 'SZ', 'BJ')),
+                    metadata_json TEXT NOT NULL,
+                    fetched_at TEXT NOT NULL,
+                    PRIMARY KEY (provider, code)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS asset_profiles (
+                    provider TEXT NOT NULL,
+                    code TEXT NOT NULL,
+                    profile_json TEXT NOT NULL,
+                    fetched_at TEXT NOT NULL,
+                    PRIMARY KEY (provider, code)
+                )
+            """)
+            self._migrate_sync_policy(conn)
+
+    def replace_instrument_catalog(
+        self,
+        provider: str,
+        entries: list[tuple[Instrument, dict]],
+        fetched_at: datetime | None = None,
+    ) -> datetime:
+        """Atomically replace one provider's complete security catalog."""
+        if not entries:
+            raise ValueError("instrument catalog must not be empty")
+        fetched_at = fetched_at or datetime.now(timezone.utc)
+        fetched_at_text = fetched_at.isoformat()
+        rows = [
+            (
+                provider,
+                instrument.code,
+                instrument.name,
+                instrument.full_name,
+                instrument.asset_type,
+                instrument.exchange,
+                json.dumps(metadata, ensure_ascii=False, allow_nan=False),
+                fetched_at_text,
+            )
+            for instrument, metadata in entries
+        ]
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "DELETE FROM instrument_catalog WHERE provider = ?",
+                (provider,),
+            )
+            conn.executemany("""
+                INSERT INTO instrument_catalog (
+                    provider, code, name, full_name, asset_type, exchange,
+                    metadata_json, fetched_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, rows)
+        return fetched_at
+
+    def get_instrument_catalog(
+        self, provider: str
+    ) -> tuple[list[tuple[Instrument, dict]], datetime] | None:
+        """Load a provider catalog only when the stored snapshot is coherent."""
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute("""
+                SELECT code, name, full_name, asset_type, exchange,
+                       metadata_json, fetched_at
+                FROM instrument_catalog
+                WHERE provider = ?
+                ORDER BY code
+            """, (provider,)).fetchall()
+        if not rows:
+            return None
+        fetched_values = {row[6] for row in rows}
+        if len(fetched_values) != 1:
+            return None
+        try:
+            fetched_at = datetime.fromisoformat(rows[0][6])
+            entries = [
+                (
+                    Instrument(
+                        code=row[0],
+                        name=row[1],
+                        full_name=row[2],
+                        asset_type=row[3],
+                        exchange=row[4],
+                    ),
+                    json.loads(row[5]),
+                )
+                for row in rows
+            ]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+        if any(not isinstance(metadata, dict) for _, metadata in entries):
+            return None
+        return entries, fetched_at
+
+    def upsert_asset_profile(
+        self,
+        provider: str,
+        profile: AssetProfile,
+        fetched_at: datetime | None = None,
+    ) -> datetime:
+        fetched_at = fetched_at or datetime.now(timezone.utc)
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                INSERT INTO asset_profiles (
+                    provider, code, profile_json, fetched_at
+                ) VALUES (?, ?, ?, ?)
+                ON CONFLICT(provider, code) DO UPDATE SET
+                    profile_json = excluded.profile_json,
+                    fetched_at = excluded.fetched_at
+            """, (
+                provider,
+                profile.code,
+                profile.model_dump_json(),
+                fetched_at.isoformat(),
+            ))
+        return fetched_at
+
+    def get_asset_profile(
+        self, provider: str, code: str
+    ) -> tuple[AssetProfile, datetime] | None:
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute("""
+                SELECT profile_json, fetched_at
+                FROM asset_profiles
+                WHERE provider = ? AND code = ?
+            """, (provider, code)).fetchone()
+        if not row:
+            return None
+        try:
+            return AssetProfile.model_validate_json(row[0]), datetime.fromisoformat(row[1])
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -97,6 +265,122 @@ class MarketCache:
             # The old ranges did not record a provider, so they cannot safely
             # authorize cache reuse after switching data source or app mode.
             conn.execute("DROP TABLE sync_ranges")
+
+    @staticmethod
+    def _migrate_sync_policy(conn: sqlite3.Connection) -> None:
+        """Invalidate range-based Tushare coverage without deleting cached bars."""
+        row = conn.execute(
+            "SELECT value FROM cache_metadata WHERE key = 'sync_policy_version'"
+        ).fetchone()
+        if row and row[0] == SYNC_POLICY_VERSION:
+            return
+
+        # MIN/MAX coverage cannot prove that every internal trading date was
+        # observed. Keep the legacy table for compatibility with other data
+        # sets, but never carry Tushare ranges into the calendar-v2 policy.
+        conn.execute("DELETE FROM sync_ranges WHERE dataset = ?", ("Tushare Pro",))
+        conn.execute("""
+            INSERT INTO cache_metadata (key, value)
+            VALUES ('sync_policy_version', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """, (SYNC_POLICY_VERSION,))
+
+    def get_calendar(
+        self, exchange: str, start: date, end: date
+    ) -> dict[date, bool]:
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute("""
+                SELECT cal_date, is_open FROM market_calendar
+                WHERE exchange = ? AND cal_date >= ? AND cal_date <= ?
+                ORDER BY cal_date ASC
+            """, (exchange, start.isoformat(), end.isoformat())).fetchall()
+        return {date.fromisoformat(day): bool(is_open) for day, is_open in rows}
+
+    def get_no_bar_dates(
+        self, dataset: str, code: str, start: date, end: date
+    ) -> dict[date, str]:
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute("""
+                SELECT trade_date, reason FROM no_bar_dates
+                WHERE dataset = ? AND code = ?
+                  AND trade_date >= ? AND trade_date <= ?
+                ORDER BY trade_date ASC
+            """, (dataset, code, start.isoformat(), end.isoformat())).fetchall()
+        return {date.fromisoformat(day): reason for day, reason in rows}
+
+    def commit_verified(
+        self,
+        dataset: str,
+        code: str,
+        calendars: Mapping[str, Mapping[date, bool]],
+        bars: List[PriceBar],
+        no_bars: Mapping[date, str],
+    ) -> None:
+        """Atomically commit only a fully verified provider result."""
+        now = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(self.db_path) as conn:
+            calendar_rows = [
+                (exchange, cal_date.isoformat(), int(is_open), now)
+                for exchange, values in calendars.items()
+                for cal_date, is_open in values.items()
+            ]
+            if calendar_rows:
+                conn.executemany("""
+                    INSERT INTO market_calendar (
+                        exchange, cal_date, is_open, fetched_at
+                    ) VALUES (?, ?, ?, ?)
+                    ON CONFLICT(exchange, cal_date) DO UPDATE SET
+                        is_open = excluded.is_open,
+                        fetched_at = excluded.fetched_at
+                """, calendar_rows)
+
+            if bars:
+                conn.executemany("""
+                    INSERT INTO price_bars (
+                        dataset, code, trade_date, open, high, low, close,
+                        volume, amount, source, fetched_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(dataset, code, trade_date) DO UPDATE SET
+                        open=excluded.open,
+                        high=excluded.high,
+                        low=excluded.low,
+                        close=excluded.close,
+                        volume=excluded.volume,
+                        amount=excluded.amount,
+                        source=excluded.source,
+                        fetched_at=excluded.fetched_at
+                """, [
+                    (
+                        dataset, bar.code, bar.trade_date.isoformat(), bar.open,
+                        bar.high, bar.low, bar.close, bar.volume, bar.amount,
+                        bar.source, bar.fetched_at.isoformat(),
+                    )
+                    for bar in bars
+                ])
+                conn.executemany("""
+                    DELETE FROM no_bar_dates
+                    WHERE dataset = ? AND code = ? AND trade_date = ?
+                """, [
+                    (dataset, code, bar.trade_date.isoformat()) for bar in bars
+                ])
+
+            if no_bars:
+                no_bar_rows = [
+                    (dataset, code, trade_date.isoformat(), reason, now)
+                    for trade_date, reason in no_bars.items()
+                ]
+                conn.executemany("""
+                    DELETE FROM price_bars
+                    WHERE dataset = ? AND code = ? AND trade_date = ?
+                """, [row[:3] for row in no_bar_rows])
+                conn.executemany("""
+                    INSERT INTO no_bar_dates (
+                        dataset, code, trade_date, reason, confirmed_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(dataset, code, trade_date) DO UPDATE SET
+                        reason = excluded.reason,
+                        confirmed_at = excluded.confirmed_at
+                """, no_bar_rows)
 
     def upsert_bars(self, dataset: str, bars: List[PriceBar]):
         if not bars:

@@ -5,8 +5,8 @@ test:
 	cd frontend && npm test -- --run
 
 test-e2e:
-	@echo "Starting backend in demo mode..."
-	cd backend && QUANTLAB_DEMO_MODE=true .venv/bin/uvicorn quantlab.main:app --port 8000 & \
+	@echo "Starting backend with cache-first Tushare Pro data..."
+	cd backend && .venv/bin/uvicorn quantlab.main:app --port 8000 & \
 	BACKEND_PID=$$!; \
 	cd frontend && npx playwright test; \
 	PLAYWRIGHT_EXIT=$$?; \
@@ -14,9 +14,9 @@ test-e2e:
 	exit $$PLAYWRIGHT_EXIT
 
 smoke-live:
-	cd backend && QUANTLAB_DEMO_MODE=false .venv/bin/python ../scripts/smoke_live_data.py
+	cd backend && .venv/bin/python ../scripts/smoke_live_data.py
 
 run:
 	@echo "Starting full stack..."
-	cd backend && QUANTLAB_DEMO_MODE=false .venv/bin/uvicorn quantlab.main:app --port 8000 & \
+	cd backend && .venv/bin/uvicorn quantlab.main:app --port 8000 & \
 	cd frontend && npm run dev

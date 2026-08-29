@@ -29,17 +29,29 @@ class FullFakeProvider:
         )
 
     def get_daily(self, code, start, end):
-        # returns 100 monotonically dated valid bars
         from datetime import datetime, timedelta, timezone
         fetched = datetime(2026, 8, 8, tzinfo=timezone.utc)
         return [
             PriceBar(
                 code=code, trade_date=start + timedelta(days=i),
-                open=1.0 + i*0.01, high=1.05 + i*0.01, low=0.95 + i*0.01, close=1.0 + i*0.01,
+                open=1.0 + (start + timedelta(days=i) - date(2025, 1, 1)).days * 0.001,
+                high=1.05 + (start + timedelta(days=i) - date(2025, 1, 1)).days * 0.001,
+                low=0.95 + (start + timedelta(days=i) - date(2025, 1, 1)).days * 0.001,
+                close=1.0 + (start + timedelta(days=i) - date(2025, 1, 1)).days * 0.001,
                 volume=1000, source="fake", fetched_at=fetched
             )
-            for i in range(100)
+            for i in range((end - start).days + 1)
         ]
+
+    def get_trade_calendar(self, exchange, start, end):
+        from datetime import timedelta
+        return {
+            start + timedelta(days=i): True
+            for i in range((end - start).days + 1)
+        }
+
+    def get_listing_date(self, code):
+        return date(2000, 1, 1)
 
     def get_etf_profile(self, code):
         return {"tracking_index": "中证全指半导体产品与设备指数", "holdings": [{"name": "样本公司", "weight": 0.10}]}

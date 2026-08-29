@@ -4,9 +4,10 @@ import type { AnalysisResult, AssetProfile, DateRangeKey, Instrument, MetricKey,
 import { instrumentDisplayName } from '../utils/instrumentNames'
 import { performanceLearningScore } from '../utils/learningScores'
 import AssetProfileView from './AssetProfile'
-import MarketChart from './MarketChart'
-import AnalysisRangeToolbar from './AnalysisRangeToolbar'
+import ChartDataTable, { type ChartDataColumn } from './ChartDataTable'
 import BeginnerMetricGuide from './BeginnerMetricGuide'
+import DateRangeControl from './DateRangeControl'
+import MarketChart from './MarketChart'
 
 interface ResearchWorkspaceProps {
   instrument: Instrument
@@ -22,7 +23,7 @@ interface MetricDefinition {
   key: MetricKey
   label: string
   value: number | null
-  format: 'percent' | 'ratio'
+  format: 'percent' | 'unsigned-percent' | 'ratio'
   icon: typeof ChartLineUp
   meaning: string
   impact: string
@@ -31,9 +32,11 @@ interface MetricDefinition {
   score: ReturnType<typeof performanceLearningScore>
 }
 
-const formatMetric = (value: number | null, format: 'percent' | 'ratio') => {
+const formatMetric = (value: number | null, format: MetricDefinition['format']) => {
   if (value === null || Number.isNaN(value)) return '数据不足'
-  return format === 'percent' ? `${value >= 0 ? '+' : ''}${(value * 100).toFixed(1)}%` : value.toFixed(2)
+  if (format === 'ratio') return value.toFixed(2)
+  const sign = format === 'percent' && value >= 0 ? '+' : ''
+  return `${sign}${(value * 100).toFixed(1)}%`
 }
 
 const riskLabel = (volatility: number | null) => {
@@ -45,7 +48,6 @@ const riskLabel = (volatility: number | null) => {
 
 export default function ResearchWorkspace({ instrument, analysis, bars, profile, profileMeta, range, onRangeChange }: ResearchWorkspaceProps) {
   const [activeMetric, setActiveMetric] = useState<MetricKey>('return')
-  const [mobileView, setMobileView] = useState<'chart' | 'explanation'>('chart')
   const { metrics, series } = analysis
   const displayName = instrumentDisplayName(instrument)
 
@@ -59,11 +61,11 @@ export default function ResearchWorkspace({ instrument, analysis, bars, profile,
       score: performanceLearningScore('return', metrics.period_return),
     },
     {
-      key: 'volatility', label: '年化波动', value: metrics.annualized_volatility, format: 'percent', icon: WaveSine,
+      key: 'volatility', label: '年化波动', value: metrics.annualized_volatility, format: 'unsigned-percent', icon: WaveSine,
       meaning: '波动率衡量每日收益上下变化的幅度，并换算成年化数值。',
       impact: '数值越高，短期涨跌越剧烈，持有体验越颠簸，对仓位和耐心要求也越高。',
       experience: '15% 以下通常较温和，15%–30% 属于中等波动，超过 30% 常见于高波动行业或主题资产。',
-      evaluation: metrics.annualized_volatility === null ? '当前样本不足，暂时无法评价。' : `当前为 ${formatMetric(metrics.annualized_volatility, 'percent')}，${riskLabel(metrics.annualized_volatility)}。经验区间只用于学习，不是买卖阈值。`,
+      evaluation: metrics.annualized_volatility === null ? '当前样本不足，暂时无法评价。' : `当前为 ${formatMetric(metrics.annualized_volatility, 'unsigned-percent')}，${riskLabel(metrics.annualized_volatility)}。经验区间只用于学习，不是买卖阈值。`,
       score: performanceLearningScore('volatility', metrics.annualized_volatility),
     },
     {
@@ -92,18 +94,28 @@ export default function ResearchWorkspace({ instrument, analysis, bars, profile,
   }, 0)
   const returnTone = (metrics.period_return ?? 0) >= 0 ? 'positive' : 'negative'
   const summary = `${metrics.period_return === null ? '收益数据暂不完整' : metrics.period_return >= 0 ? '区间收益为正' : '区间收益为负'}，${riskLabel(metrics.annualized_volatility)}；先看最大回撤，再判断收益是否值得。`
+  const chartColumns: ChartDataColumn[] = activeMetric === 'return'
+    ? [
+        { label: displayName, values: series.cumulative_return, format: 'percent' },
+        ...(series.benchmark_return.some((value) => value !== null)
+          ? [{ label: '跟踪基准', values: series.benchmark_return, format: 'percent' as const }]
+          : []),
+      ]
+    : activeMetric === 'volatility'
+      ? [{ label: '滚动20日年化波动', values: series.rolling_volatility, format: 'percent' }]
+      : activeMetric === 'drawdown'
+        ? [{ label: '回撤', values: series.drawdown, format: 'percent' }]
+        : [{ label: '滚动60日夏普比率', values: series.rolling_sharpe, digits: 2 }]
 
   return (
     <article className="research-workspace">
       <section className="instrument-summary" aria-labelledby="instrument-title">
         <div>
-          <span className="lesson-eyebrow">风险收益课 · 历史体检</span>
           <h1 id="instrument-title">{displayName} <span>{instrument.code}</span></h1>
           <p><strong>一句话结论：</strong>{summary}</p>
         </div>
+        <DateRangeControl range={range} onChange={onRangeChange} />
       </section>
-
-      <AnalysisRangeToolbar range={range} onChange={onRangeChange} />
 
       <dl className="quick-facts">
         <div><dt>区间表现</dt><dd className={`tone-${returnTone}`}>{formatMetric(metrics.period_return, 'percent')}</dd></div>
@@ -119,7 +131,7 @@ export default function ResearchWorkspace({ instrument, analysis, bars, profile,
         <AssetProfileView profile={profile} meta={profileMeta} />
       </details>
 
-      <div className={`learning-layout mobile-view-${mobileView}`}>
+      <div className="learning-layout">
         <nav className="metric-rail" aria-label="核心量化指标">
           {metricDefinitions.map((item) => {
             const Icon = item.icon
@@ -133,17 +145,12 @@ export default function ResearchWorkspace({ instrument, analysis, bars, profile,
           })}
         </nav>
 
-        <div className="mobile-view-toggle" role="group" aria-label="移动端内容视图">
-          <button type="button" className={mobileView === 'chart' ? 'is-active' : ''} aria-pressed={mobileView === 'chart'} onClick={() => setMobileView('chart')}>图表</button>
-          <button type="button" className={mobileView === 'explanation' ? 'is-active' : ''} aria-pressed={mobileView === 'explanation'} onClick={() => setMobileView('explanation')}>指标解释</button>
-        </div>
-
         <section className="chart-panel" aria-live="polite">
           <div className="chart-panel-heading">
             <div><strong>{active.label}</strong><span>点击左侧指标，图表与解释同步切换</span></div>
-            <div className="chart-legend"><span className="legend-asset" />{displayName}</div>
           </div>
           <MarketChart bars={bars} analysis={analysis} metric={activeMetric} instrumentName={displayName} />
+          <ChartDataTable label={`查看${active.label}图表数据`} dates={series.dates} columns={chartColumns} />
         </section>
 
         <aside className="learning-panel" aria-label={`${active.label}解释`}>

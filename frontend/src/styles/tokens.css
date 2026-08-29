@@ -1,10 +1,10 @@
 :root {
-  --font-sans-zh: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "HarmonyOS Sans SC", "WenQuanYi Micro Hei", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", sans-serif;
   --paper: #f8f8f4;
   --surface: #fffefb;
   --surface-soft: #f1f1eb;
   --ink: #20241f;
-  --muted: #777872;
+  --muted: #6b6d67;
   --muted-strong: #565952;
   --forest: #174d32;
   --forest-deep: #123d28;

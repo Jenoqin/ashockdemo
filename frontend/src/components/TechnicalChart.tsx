@@ -11,6 +11,11 @@ interface TechnicalChartProps {
 }
 
 const percent = (value: number) => `${(value * 100).toFixed(1)}%`
+const metricLabels: Record<TechnicalMetricKey, string> = {
+  trend: '趋势状态',
+  momentum: '动量状态',
+  volatility: '波动状态',
+}
 
 export default function TechnicalChart({ bars, analysis, metric, instrumentName }: TechnicalChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -34,9 +39,22 @@ export default function TechnicalChart({ bars, analysis, metric, instrumentName 
     if (!chart || !dates.length) return
 
     const closes = bars.map((bar) => bar.close)
-    const axisLabel = { color: '#777872', fontSize: 11, hideOverlap: true }
+    const axisLabel = { color: '#6b6d67', fontSize: 12, hideOverlap: true }
     const splitLine = { lineStyle: { color: '#e9e8e2', type: 'dashed' as const } }
     const line = { type: 'line' as const, showSymbol: false, connectNulls: false, emphasis: { focus: 'series' as const } }
+    const legend = {
+      type: 'scroll' as const,
+      top: 5,
+      left: 52,
+      right: 18,
+      itemGap: 12,
+      textStyle: { color: '#565952', fontSize: 12 },
+    }
+    const macdBarLegend = {
+      name: 'MACD 柱',
+      icon: 'roundRect',
+      itemStyle: { color: '#4f8a68' },
+    }
     const base = {
       animationDuration: 450,
       textStyle: { fontFamily: CHART_FONT_FAMILY },
@@ -53,7 +71,7 @@ export default function TechnicalChart({ bars, analysis, metric, instrumentName 
     if (metric === 'trend') {
       chart.setOption({
         ...base,
-        legend: { top: 5, right: 18, textStyle: { color: '#656760' } },
+        legend: { ...legend, data: [instrumentName, 'MA20', 'MA60', macdBarLegend, 'MACD', '信号线'] },
         grid: [
           { left: 52, right: 22, top: 52, height: '52%' },
           { left: 52, right: 22, top: '73%', height: '17%' },
@@ -67,12 +85,12 @@ export default function TechnicalChart({ bars, analysis, metric, instrumentName 
           { type: 'value', gridIndex: 1, scale: true, axisLabel: { ...axisLabel, formatter: (value: number) => value.toFixed(3) }, splitLine },
         ],
         series: [
-          { ...line, name: instrumentName, data: closes, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: '#20241f', width: 2.2 } },
-          { ...line, name: 'MA20', data: analysis.series.ma20, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: '#174d32', width: 2 } },
-          { ...line, name: 'MA60', data: analysis.series.ma60, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: '#b47a22', width: 1.8 } },
+          { ...line, name: instrumentName, data: closes, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: '#20241f', width: 2.2 }, itemStyle: { color: '#20241f' } },
+          { ...line, name: 'MA20', data: analysis.series.ma20, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: '#174d32', width: 2 }, itemStyle: { color: '#174d32' } },
+          { ...line, name: 'MA60', data: analysis.series.ma60, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: '#b47a22', width: 1.8 }, itemStyle: { color: '#b47a22' } },
           { type: 'bar', name: 'MACD 柱', data: analysis.series.macd_hist, xAxisIndex: 1, yAxisIndex: 1, itemStyle: { color: (params: { value: number }) => params.value >= 0 ? '#4f8a68' : '#df806f' } },
-          { ...line, name: 'MACD', data: analysis.series.macd, xAxisIndex: 1, yAxisIndex: 1, lineStyle: { color: '#174d32', width: 1.5 } },
-          { ...line, name: '信号线', data: analysis.series.macd_signal, xAxisIndex: 1, yAxisIndex: 1, lineStyle: { color: '#b47a22', width: 1.4 } },
+          { ...line, name: 'MACD', data: analysis.series.macd, xAxisIndex: 1, yAxisIndex: 1, lineStyle: { color: '#174d32', width: 1.5 }, itemStyle: { color: '#174d32' } },
+          { ...line, name: '信号线', data: analysis.series.macd_signal, xAxisIndex: 1, yAxisIndex: 1, lineStyle: { color: '#b47a22', width: 1.4 }, itemStyle: { color: '#b47a22' } },
         ],
       }, true)
       return
@@ -81,7 +99,7 @@ export default function TechnicalChart({ bars, analysis, metric, instrumentName 
     if (metric === 'momentum') {
       chart.setOption({
         ...base,
-        legend: { top: 5, right: 18, textStyle: { color: '#656760' } },
+        legend: { ...legend, data: ['RSI 14', macdBarLegend, 'MACD', '信号线'] },
         grid: [
           { left: 52, right: 22, top: 52, height: '45%' },
           { left: 52, right: 22, top: '68%', height: '22%' },
@@ -103,11 +121,12 @@ export default function TechnicalChart({ bars, analysis, metric, instrumentName 
             yAxisIndex: 0,
             lineStyle: { color: '#174d32', width: 2.2 },
             markArea: { silent: true, itemStyle: { color: 'rgba(180,122,34,.08)' }, data: [[{ yAxis: 70 }, { yAxis: 100 }]] },
-            markLine: { symbol: 'none', label: { color: '#8a6e3c', fontSize: 10 }, lineStyle: { color: '#c7b48d', type: 'dashed' }, data: [{ yAxis: 70, name: '偏热参考' }, { yAxis: 30, name: '偏弱参考' }] },
+            itemStyle: { color: '#174d32' },
+            markLine: { symbol: 'none', label: { color: '#8a6e3c', fontSize: 12 }, lineStyle: { color: '#c7b48d', type: 'dashed' }, data: [{ yAxis: 70, name: '偏热参考' }, { yAxis: 30, name: '偏弱参考' }] },
           },
           { type: 'bar', name: 'MACD 柱', data: analysis.series.macd_hist, xAxisIndex: 1, yAxisIndex: 1, itemStyle: { color: (params: { value: number }) => params.value >= 0 ? '#4f8a68' : '#df806f' } },
-          { ...line, name: 'MACD', data: analysis.series.macd, xAxisIndex: 1, yAxisIndex: 1, lineStyle: { color: '#174d32', width: 1.5 } },
-          { ...line, name: '信号线', data: analysis.series.macd_signal, xAxisIndex: 1, yAxisIndex: 1, lineStyle: { color: '#b47a22', width: 1.4 } },
+          { ...line, name: 'MACD', data: analysis.series.macd, xAxisIndex: 1, yAxisIndex: 1, lineStyle: { color: '#174d32', width: 1.5 }, itemStyle: { color: '#174d32' } },
+          { ...line, name: '信号线', data: analysis.series.macd_signal, xAxisIndex: 1, yAxisIndex: 1, lineStyle: { color: '#b47a22', width: 1.4 }, itemStyle: { color: '#b47a22' } },
         ],
       }, true)
       return
@@ -115,7 +134,7 @@ export default function TechnicalChart({ bars, analysis, metric, instrumentName 
 
     chart.setOption({
       ...base,
-      legend: { top: 5, right: 18, textStyle: { color: '#656760' } },
+      legend,
       grid: [
         { left: 52, right: 22, top: 52, height: '52%' },
         { left: 52, right: 22, top: '73%', height: '17%' },
@@ -129,14 +148,14 @@ export default function TechnicalChart({ bars, analysis, metric, instrumentName 
         { type: 'value', gridIndex: 1, min: 0, axisLabel: { ...axisLabel, formatter: percent }, splitLine },
       ],
       series: [
-        { ...line, name: instrumentName, data: closes, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: '#20241f', width: 2.2 } },
-        { ...line, name: '布林上轨', data: analysis.series.boll_upper, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: '#b47a22', width: 1.2, type: 'dashed' } },
-        { ...line, name: '布林中轨', data: analysis.series.boll_mid, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: '#174d32', width: 1.7 } },
-        { ...line, name: '布林下轨', data: analysis.series.boll_lower, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: '#b47a22', width: 1.2, type: 'dashed' } },
-        { ...line, name: 'ATR 14 / 价格', data: analysis.series.atr14_percent, xAxisIndex: 1, yAxisIndex: 1, lineStyle: { color: '#ef634c', width: 2 }, areaStyle: { color: 'rgba(239,99,76,.10)' } },
+        { ...line, name: instrumentName, data: closes, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: '#20241f', width: 2.2 }, itemStyle: { color: '#20241f' } },
+        { ...line, name: '布林上轨', data: analysis.series.boll_upper, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: '#b47a22', width: 1.2, type: 'dashed' }, itemStyle: { color: '#b47a22' } },
+        { ...line, name: '布林中轨', data: analysis.series.boll_mid, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: '#174d32', width: 1.7 }, itemStyle: { color: '#174d32' } },
+        { ...line, name: '布林下轨', data: analysis.series.boll_lower, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: '#b47a22', width: 1.2, type: 'dashed' }, itemStyle: { color: '#b47a22' } },
+        { ...line, name: 'ATR 14 / 价格', data: analysis.series.atr14_percent, xAxisIndex: 1, yAxisIndex: 1, lineStyle: { color: '#ef634c', width: 2 }, itemStyle: { color: '#ef634c' }, areaStyle: { color: 'rgba(239,99,76,.10)' } },
       ],
     }, true)
   }, [analysis, bars, instrumentName, metric])
 
-  return <div ref={containerRef} className="metric-chart" data-testid="technical-chart" aria-label="技术状态联动图表" />
+  return <div ref={containerRef} className="metric-chart" data-testid="technical-chart" role="img" aria-label={`${instrumentName}${metricLabels[metric]}图表，详细数据可在图表下方展开查看`} />
 }

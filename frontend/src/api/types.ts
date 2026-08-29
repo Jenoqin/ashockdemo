@@ -192,7 +192,6 @@ export interface ResponseMeta {
   sources: string[]
   fetched_at: string
   cache_hit: boolean
-  is_demo: boolean
   warnings: string[]
 }
 

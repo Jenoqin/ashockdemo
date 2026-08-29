@@ -1,4 +1,3 @@
-import { CaretDown } from '@phosphor-icons/react'
 import type { DateRangeKey } from '../api/types'
 
 interface DateRangeControlProps {
@@ -33,13 +32,6 @@ export default function DateRangeControl({ range, onChange }: DateRangeControlPr
           </button>
         ))}
       </div>
-      <label className="date-range-select">
-        <span className="sr-only">观察区间</span>
-        <select value={range} onChange={(event) => onChange(event.target.value as DateRangeKey)}>
-          {ranges.map((item) => <option key={item.key} value={item.key}>{item.fullLabel}</option>)}
-        </select>
-        <CaretDown size={13} aria-hidden="true" />
-      </label>
     </div>
   )
 }

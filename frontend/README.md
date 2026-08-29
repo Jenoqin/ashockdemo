@@ -1,8 +1,8 @@
 # QuantLab 前端
 
-量研手记的 React 前端。当前界面包含证券搜索、区间切换、风险收益课、技术状态课和资产资料折叠区。
+量研手记的 React 前端。当前界面包含证券搜索、区间切换、风险收益课、技术状态课和资产资料折叠区。界面仅面向桌面端，最小视口宽度为 1024px，不维护移动端响应式布局；1024–1180px 使用图表优先的紧凑桌面两栏布局。
 
-项目级安装、后端启动、真实数据配置和 API 说明请先阅读仓库根目录的 [README](../README.md)。
+项目级安装、缓存优先/Tushare Pro 数据配置和 API 说明请先阅读仓库根目录的 [README](../README.md)。
 
 ## 环境要求
 
@@ -40,6 +40,7 @@ npx playwright test  # Playwright E2E
 - `components/TechnicalWorkspace.tsx`：趋势、动量、波动状态及指标解释。
 - `components/MarketChart.tsx`：风险收益联动图。
 - `components/TechnicalChart.tsx`：MA、MACD、RSI、布林带和 ATR 联动图。
+- `components/ChartDataTable.tsx`：图表对应的可展开、可访问数据表。
 - `api/client.ts`：调用 FastAPI 的类型化客户端。
 
 `BacktestLab.tsx`、刷新客户端和相应 API 仍保留在代码中，但当前没有挂载到 `App.tsx`。

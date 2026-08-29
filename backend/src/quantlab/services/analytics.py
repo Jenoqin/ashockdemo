@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from typing import Tuple, Optional
-from quantlab.models import AnalysisResult, AnalysisSeries, DiagnosticCategory, Diagnostics, PerformanceMetrics, ScoreRule
+from quantlab.models import AnalysisResult, AnalysisSeries, DiagnosticCategory, Diagnostics, PerformanceMetrics, PriceBar, ScoreRule
 
 def max_drawdown(series: pd.Series) -> Tuple[float, int]:
     if len(series) == 0:
@@ -203,7 +203,12 @@ def score_diagnostics(frame: pd.DataFrame) -> Diagnostics:
         drawdown=DiagnosticCategory(score=d_score, rules=d_rules)
     )
 
-def analyze_market(bars: list, benchmark_bars=None, risk_free_rate: float = 0.02) -> AnalysisResult:
+def analyze_market(
+    bars: list[PriceBar],
+    benchmark_bars: list[PriceBar] | None = None,
+    risk_free_rate: float = 0.02,
+    history_bars: list[PriceBar] | None = None,
+) -> AnalysisResult:
     if not bars:
         return AnalysisResult(metrics=PerformanceMetrics(), diagnostics=score_diagnostics(pd.DataFrame()))
         
@@ -217,9 +222,28 @@ def analyze_market(bars: list, benchmark_bars=None, risk_free_rate: float = 0.02
     metrics.current_drawdown = float(drawdown.iloc[-1])
 
     cumulative_return = df["close"] / df["close"].iloc[0] - 1
-    rolling_volatility = returns.rolling(20).std(ddof=1) * np.sqrt(252)
-    rolling_return = (1 + returns).rolling(60).apply(np.prod, raw=True) ** (252 / 60) - 1
-    rolling_sharpe = (rolling_return - risk_free_rate) / (returns.rolling(60).std(ddof=1) * np.sqrt(252))
+    context_by_date = {
+        bar.trade_date: bar for bar in (history_bars or bars)
+    }
+    context_by_date.update({bar.trade_date: bar for bar in bars})
+    context_df = pd.DataFrame([
+        bar.model_dump()
+        for bar in sorted(context_by_date.values(), key=lambda bar: bar.trade_date)
+    ])
+    context_returns = context_df["close"].pct_change()
+    context_rolling_volatility = context_returns.rolling(20).std(ddof=1) * np.sqrt(252)
+    context_rolling_return = (1 + context_returns).rolling(60).apply(np.prod, raw=True) ** (252 / 60) - 1
+    context_rolling_sharpe = (context_rolling_return - risk_free_rate) / (
+        context_returns.rolling(60).std(ddof=1) * np.sqrt(252)
+    )
+    rolling_volatility_by_date = pd.Series(
+        context_rolling_volatility.to_numpy(), index=context_df["trade_date"]
+    )
+    rolling_sharpe_by_date = pd.Series(
+        context_rolling_sharpe.to_numpy(), index=context_df["trade_date"]
+    )
+    rolling_volatility = df["trade_date"].map(rolling_volatility_by_date)
+    rolling_sharpe = df["trade_date"].map(rolling_sharpe_by_date)
     benchmark_return = pd.Series([np.nan] * len(df), index=df.index, dtype=float)
     
     if benchmark_bars:

@@ -4,7 +4,16 @@ def test_market_daily_wraps_data_and_provenance(client):
     body = response.json()
     assert body["data"][0]["code"] == "512480.SH"
     assert body["meta"]["sources"] == ["fake"]
-    assert body["meta"]["is_demo"] is False
+
+
+def test_short_analysis_range_has_warmed_rolling_volatility(client):
+    response = client.get(
+        "/api/analysis/512480.SH?start=2026-01-01&end=2026-01-31"
+    )
+    assert response.status_code == 200
+    series = response.json()["data"]["series"]
+    assert len(series["dates"]) == 31
+    assert all(value is not None for value in series["rolling_volatility"])
 
 def test_invalid_code_has_stable_error_shape(client):
     response = client.get("/api/instruments/not-a-code")

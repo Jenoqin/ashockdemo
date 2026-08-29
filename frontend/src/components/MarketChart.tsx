@@ -11,6 +11,12 @@ interface MarketChartProps {
 }
 
 const percent = (value: number) => `${(value * 100).toFixed(0)}%`
+const metricLabels: Record<MetricKey, string> = {
+  return: '累计收益',
+  volatility: '滚动20日年化波动',
+  drawdown: '最大回撤',
+  sharpe: '滚动60日夏普比率',
+}
 
 export default function MarketChart({ bars, analysis, metric, instrumentName }: MarketChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -40,8 +46,16 @@ export default function MarketChart({ bars, analysis, metric, instrumentName }: 
       connectNulls: false,
       emphasis: { focus: 'series' },
     }
-    const axisLabel = { color: '#777872', fontSize: 11, hideOverlap: true }
+    const axisLabel = { color: '#6b6d67', fontSize: 12, hideOverlap: true }
     const splitLine = { lineStyle: { color: '#e9e8e2', type: 'dashed' as const } }
+    const legend = {
+      type: 'scroll' as const,
+      top: 6,
+      right: 22,
+      itemWidth: 18,
+      itemHeight: 3,
+      textStyle: { color: '#565952', fontSize: 12 },
+    }
     const tooltip = {
       trigger: 'axis' as const,
       backgroundColor: 'rgba(255,255,252,.98)',
@@ -64,6 +78,7 @@ export default function MarketChart({ bars, analysis, metric, instrumentName }: 
       chart.setOption({
         animationDuration: 450,
         textStyle: { fontFamily: CHART_FONT_FAMILY },
+        legend: { ...legend, top: 0 },
         tooltip,
         axisPointer: { link: [{ xAxisIndex: 'all' }] },
         grid: [
@@ -80,7 +95,7 @@ export default function MarketChart({ bars, analysis, metric, instrumentName }: 
         ],
         dataZoom: [{ type: 'inside', xAxisIndex: [0, 1], start: 0, end: 100 }],
         series: [
-          { ...common, name: `${instrumentName} 净值`, data: normalized, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: '#174d32', width: 2 } },
+          { ...common, name: `${instrumentName} 净值`, data: normalized, xAxisIndex: 0, yAxisIndex: 0, lineStyle: { color: '#174d32', width: 2 }, itemStyle: { color: '#174d32' } },
           {
             ...common,
             name: '回撤',
@@ -88,6 +103,7 @@ export default function MarketChart({ bars, analysis, metric, instrumentName }: 
             xAxisIndex: 1,
             yAxisIndex: 1,
             lineStyle: { color: '#ef634c', width: 2 },
+            itemStyle: { color: '#ef634c' },
             areaStyle: { color: 'rgba(239,99,76,.16)' },
             markPoint: {
               symbol: 'circle',
@@ -140,7 +156,7 @@ export default function MarketChart({ bars, analysis, metric, instrumentName }: 
       textStyle: { fontFamily: CHART_FONT_FAMILY },
       title: { text: config.title, left: 46, top: 5, textStyle: { color: '#242722', fontSize: 15, fontWeight: 650 } },
       tooltip,
-      legend: { top: 6, right: 22, textStyle: { color: '#656760' } },
+      legend,
       grid: { left: 48, right: 22, top: 54, bottom: 42 },
       xAxis: { type: 'category', data: dates, boundaryGap: false, axisLabel, axisTick: { show: false }, axisLine: { lineStyle: { color: '#c9c9c3' } } },
       yAxis: { type: 'value', scale: metric === 'sharpe', axisLabel: { ...axisLabel, formatter: config.formatter }, splitLine },
@@ -151,15 +167,16 @@ export default function MarketChart({ bars, analysis, metric, instrumentName }: 
           name: instrumentName,
           data: config.asset,
           lineStyle: { color: '#174d32', width: 2.4 },
+          itemStyle: { color: '#174d32' },
           areaStyle: { color: config.areaColor },
           markLine: { symbol: 'none', label: { color: '#8a6e3c', fontSize: 10 }, lineStyle: { color: '#c7b48d', type: 'dashed' }, data: config.referenceLines },
         },
         ...(config.benchmark.some((value) => value !== null)
-          ? [{ ...common, name: '跟踪基准', data: config.benchmark, lineStyle: { color: '#a4a6a1', width: 1.8 } }]
+          ? [{ ...common, name: '跟踪基准', data: config.benchmark, lineStyle: { color: '#a4a6a1', width: 1.8 }, itemStyle: { color: '#a4a6a1' } }]
           : []),
       ],
     }, true)
   }, [analysis, bars, instrumentName, metric])
 
-  return <div ref={containerRef} className="metric-chart" data-testid="market-chart" aria-label="指标联动图表" />
+  return <div ref={containerRef} className="metric-chart" data-testid="market-chart" role="img" aria-label={`${instrumentName}${metricLabels[metric]}图表，详细数据可在图表下方展开查看`} />
 }
