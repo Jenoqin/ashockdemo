@@ -1,6 +1,6 @@
 # QuantLab 前端
 
-量研手记的 React 前端。当前界面包含证券搜索、区间切换、风险收益课、技术状态课和资产资料折叠区。界面仅面向桌面端，最小视口宽度为 1024px，不维护移动端响应式布局；1024–1180px 使用图表优先的紧凑桌面两栏布局。
+量研手记的 React 前端。当前界面包含证券搜索、区间切换、风险收益课和技术状态课。技术状态课沿用风险收益课的三栏学习布局，并提供按状态联动、默认折叠的公式学习指南。界面仅面向桌面端，最小视口宽度为 1024px，不维护移动端响应式布局；1024–1180px 使用图表优先的紧凑桌面两栏布局。
 
 项目级安装、缓存优先/Tushare Pro 数据配置和 API 说明请先阅读仓库根目录的 [README](../README.md)。
 
@@ -36,8 +36,10 @@ npx playwright test  # Playwright E2E
 
 - `App.tsx`：加载状态与“风险收益课 / 技术状态课”页面切换。
 - `hooks/useResearch.ts`：默认标的、日期区间、并发请求取消和搜索状态。
-- `components/ResearchWorkspace.tsx`：收益、波动、回撤、夏普和资产资料。
-- `components/TechnicalWorkspace.tsx`：趋势、动量、波动状态及指标解释。
+- `components/ResearchWorkspace.tsx`：收益、波动、回撤和夏普指标课程。
+- `components/TechnicalWorkspace.tsx`：趋势、动量、波动状态切换，以及左侧状态、中间图表、右侧解释的三栏课程布局。
+- `components/TechnicalLearningGuide.tsx`：按当前状态展示指标含义、第一性原理、公式、教学示例和评分规则。
+- `content/technicalLearning.ts`：技术指标课程文案与公式的集中定义。
 - `components/MarketChart.tsx`：风险收益联动图。
 - `components/TechnicalChart.tsx`：MA、MACD、RSI、布林带和 ATR 联动图。
 - `components/ChartDataTable.tsx`：图表对应的可展开、可访问数据表。

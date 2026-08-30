@@ -69,6 +69,7 @@ export interface AnalysisSeries {
   macd_signal: Array<number | null>
   macd_hist: Array<number | null>
   rsi14: Array<number | null>
+  return_20d: Array<number | null>
   boll_upper: Array<number | null>
   boll_mid: Array<number | null>
   boll_lower: Array<number | null>

@@ -73,7 +73,11 @@ describe('App', () => {
     expect(screen.getByText(/区间收益为正时，还要结合最大回撤和波动/)).toBeInTheDocument()
     expect(screen.getByText('Tushare Pro')).toBeInTheDocument()
     expect(screen.getAllByText(/更新于/).length).toBeGreaterThan(0)
-    expect(screen.getByText('基础资料')).toBeInTheDocument()
+    expect(screen.queryByText('基础资料')).not.toBeInTheDocument()
+    expect(screen.queryByText('跟踪指数、基金规模与持仓')).not.toBeInTheDocument()
+    expect(screen.queryByText('区间表现')).not.toBeInTheDocument()
+    expect(screen.queryByText('持有波动')).not.toBeInTheDocument()
+    expect(screen.queryByText('最大回撤发生日')).not.toBeInTheDocument()
   })
 
   it('keeps technical-state and performance scoring on separate learning pages', async () => {
@@ -90,12 +94,58 @@ describe('App', () => {
     expect(screen.queryByText('技术状态课 · 当前体征')).not.toBeInTheDocument()
     expect(screen.queryByText('本页只评当前技术状态。')).not.toBeInTheDocument()
     expect(screen.getByRole('group', { name: '观察区间' }).closest('.instrument-summary')).not.toBeNull()
-    expect(screen.getByText(/趋势 80 分、动量 60 分、波动状态 90 分/)).toBeInTheDocument()
+    expect(screen.getByText(/趋势 80 分、动量 60 分、波动 90 分/)).toBeInTheDocument()
     expect(screen.getByTestId('technical-chart')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /趋势状态/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByText(/SMAₙ/)).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '展开指南' }))
+    expect(screen.getAllByText('第一性原理')).toHaveLength(2)
+    expect(screen.getByText(/SMAₙ/)).toBeInTheDocument()
+    expect(screen.getByText(/分数是透明规则的加权结果，不是上涨概率/)).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: /动量状态/ }))
     expect(screen.getAllByText('RSI 14').length).toBeGreaterThan(0)
-    expect(screen.getByText(/“超买”不等于马上下跌/)).toBeInTheDocument()
+    expect(screen.getByText(/R20ₜ/)).toBeInTheDocument()
+    expect(screen.getAllByText(/RSI 超过 70 不等于马上下跌/).length).toBeGreaterThan(0)
+
+    await userEvent.click(screen.getByRole('button', { name: /波动状态/ }))
+    expect(screen.getByRole('button', { name: /波动状态/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText(/Vol20ₜ/)).toBeInTheDocument()
+  })
+
+  it('labels unavailable technical history instead of presenting a zero score', async () => {
+    vi.mocked(api.loadResearch).mockResolvedValueOnce({
+      ...researchBundle,
+      analysis: {
+        ...researchBundle.analysis,
+        data: {
+          ...researchBundle.analysis.data,
+          series: {
+            ...researchBundle.analysis.data.series,
+            ma60: [null, null],
+            rsi14: [null, null],
+            return_20d: [null, null],
+            rolling_volatility: [null, null],
+            atr14_percent: [null, null],
+            boll_upper: [null, null],
+            boll_mid: [null, null],
+            boll_lower: [null, null],
+          },
+        },
+      },
+    })
+
+    render(<App />)
+    await screen.findByRole('heading', { name: /半导体 ETF/ })
+    await userEvent.click(screen.getByRole('button', { name: /技术状态课/ }))
+
+    expect(screen.getByText(/趋势 数据不足、动量 数据不足、波动 数据不足/)).toBeInTheDocument()
+    expect(screen.getAllByText('样本不足')).toHaveLength(3)
+    expect(screen.queryByText('趋势 0 分')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '展开指南' }))
+    expect(screen.getAllByText(/历史样本不足，暂不计算规则满足度/).length).toBeGreaterThan(0)
   })
 
   it('requires choosing a search result before changing the instrument', async () => {

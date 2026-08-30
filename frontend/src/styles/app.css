@@ -35,7 +35,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 
 .search-results code,
 .instrument-summary h1 span,
-.quick-facts dd,
 .profile-meta,
 .profile-facts dd,
 .profile-holdings span,
@@ -115,11 +114,6 @@ main { flex: 1; width: 100%; padding: 26px clamp(24px, 3.2vw, 52px) 0; }
 .score-boundary-note { display: flex; align-items: center; gap: 9px; margin: 18px 0 0; padding: 10px 13px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--forest-soft); color: var(--muted-strong); font-size: 12px; }
 .score-boundary-note svg { flex: 0 0 auto; color: var(--forest); }
 .score-boundary-note strong { color: var(--ink); }
-.quick-facts { display: flex; align-items: stretch; margin: 20px 0 28px; padding: 0; }
-.quick-facts > div { min-width: 225px; padding: 0 28px 0 20px; border-left: 1px solid var(--line); }
-.quick-facts > div:first-child { padding-left: 2px; border-left: 0; }
-.quick-facts dt { color: var(--muted-strong); font-size: 13px; }
-.quick-facts dd { margin: 4px 0 0; font-size: 18px; font-weight: 700; }
 .profile-disclosure { margin: -10px 0 28px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
 .profile-disclosure > summary { display: flex; align-items: baseline; gap: 12px; padding: 14px 18px; cursor: pointer; list-style-position: inside; }
 .profile-disclosure > summary span { font-weight: 700; }
@@ -137,7 +131,7 @@ main { flex: 1; width: 100%; padding: 26px clamp(24px, 3.2vw, 52px) 0; }
 .profile-holdings span { display: inline-flex; gap: 8px; padding: 6px 9px; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--muted-strong); font-size: 12px; }
 .profile-holdings p { margin: 0; color: var(--muted); font-size: 12px; }
 
-.learning-layout { display: grid; grid-template-columns: 212px minmax(520px, 1fr) 292px; gap: 30px; align-items: stretch; }
+.learning-layout { display: grid; grid-template-columns: 212px minmax(520px, 1fr) 292px; gap: 30px; align-items: stretch; margin-top: 28px; }
 .metric-rail { display: grid; gap: 12px; align-content: start; }
 .metric-rail button {
   min-height: 138px;
@@ -179,13 +173,76 @@ main { flex: 1; width: 100%; padding: 26px clamp(24px, 3.2vw, 52px) 0; }
 .refreshing-range-shell { width: min(100%, 1480px); margin: 0 auto; }
 .refreshing-range-shell .analysis-toolbar { margin-top: 0; }
 .metric-chart { width: 100%; height: 630px; }
-.technical-learning-layout { align-items: start; margin-top: 28px; }
+
+.technical-workspace { padding-bottom: 10px; }
+.technical-learning-layout { align-items: start; }
 .technical-learning-layout .metric-rail button { min-height: 154px; }
 .technical-values { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 8px 10px 0 4px; }
-.technical-values > div { padding: 10px 12px; border-left: 2px solid var(--line-strong); background: var(--surface); }
-.technical-values dt { color: var(--muted); font-size: 12px; }
-.technical-values dd { margin: 2px 0 0; font-size: 14px; font-weight: 700; }
+.technical-values > div { min-width: 0; padding: 10px 12px; border-left: 2px solid var(--line-strong); background: var(--surface); }
+.technical-values dt { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.technical-values dd { margin: 2px 0 0; overflow: hidden; font-size: 14px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .technical-workspace .metric-chart { height: 560px; }
+.technical-learning-panel { min-height: 0; }
+.score-rules { margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--line); }
+.score-rules > summary { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; color: var(--ink); cursor: pointer; list-style: none; }
+.score-rules > summary::-webkit-details-marker { display: none; }
+.score-rules > summary svg { color: var(--forest); }
+.score-rules > summary strong { font-size: 12px; }
+.score-rules > summary > span { color: var(--muted); font-size: 12px; font-weight: 500; }
+.score-rules ul { display: grid; gap: 10px; margin: 16px 0 0; padding: 0; list-style: none; }
+.score-rules li { display: grid; grid-template-columns: 48px 1fr; gap: 9px; align-items: start; }
+.score-rules li > span { margin-top: 1px; padding: 2px 5px; border-radius: 999px; background: var(--surface-soft); color: var(--muted); font-size: 11px; text-align: center; }
+.score-rules li.is-triggered > span { background: var(--forest-soft); color: var(--forest); font-weight: 700; }
+.score-rules li div strong, .score-rules li div small { display: block; }
+.score-rules li div strong { font-size: 12px; line-height: 1.45; }
+.score-rules li div small { margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+.technical-beginner-guide { margin-top: 34px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-soft); }
+.technical-guide-trigger { min-height: 112px; display: flex; align-items: center; justify-content: space-between; gap: 32px; padding: 20px 24px; }
+.technical-guide-trigger h2 { margin: 0; font-size: 21px; }
+.technical-guide-trigger p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+.technical-guide-trigger button { min-width: 112px; height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface-soft); color: var(--forest); font-weight: 700; cursor: pointer; }
+.technical-guide-trigger button:hover { border-color: var(--forest); }
+.technical-guide-trigger button svg { transition: transform .18s ease; }
+.technical-beginner-guide.is-expanded .technical-guide-trigger button svg { transform: rotate(180deg); }
+.technical-guide-content { padding: 0 28px 28px; border-top: 1px solid var(--line); }
+.technical-guide-intro { max-width: 900px; margin: 0; padding: 24px 0; color: var(--muted-strong); font-size: 14px; line-height: 1.8; }
+.technical-lesson-list { border-top: 1px solid var(--line); }
+.technical-lesson { padding: 30px 0 32px; }
+.technical-lesson + .technical-lesson { border-top: 1px solid var(--line); }
+.technical-lesson > header { display: grid; grid-template-columns: 58px 1fr; align-items: start; }
+.technical-lesson > header > span { color: var(--line-strong); font-size: 28px; font-weight: 700; line-height: 1; letter-spacing: -.05em; }
+.technical-lesson > header small { color: var(--forest); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+.technical-lesson > header h3 { margin: 3px 0 0; font-size: 21px; }
+.technical-lesson-explanation, .technical-lesson-application { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 36px; margin: 24px 0 0 58px; }
+.technical-lesson-explanation section + section, .technical-lesson-application section + section { padding-left: 36px; border-left: 1px solid var(--line); }
+.technical-lesson h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 14px; }
+.technical-lesson h4 svg { color: var(--forest); }
+.technical-lesson p { margin: 0; color: var(--muted-strong); font-size: 13px; line-height: 1.75; }
+.technical-formula-block { margin: 24px 0 0 58px; padding: 18px 20px; border-left: 3px solid var(--forest); background: var(--forest-soft); }
+.technical-formula-block code { display: block; overflow-x: auto; color: var(--ink); font-family: var(--font-ui); font-size: 14px; font-weight: 700; line-height: 1.7; white-space: normal; }
+.technical-formula-block ul { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 12px 0 0; padding: 0; color: var(--muted-strong); font-size: 12px; list-style: none; }
+.technical-formula-block li::before { margin-right: 7px; color: var(--forest); content: '·'; font-weight: 700; }
+.technical-lesson-application h4 { color: var(--forest); }
+.technical-misconception { display: flex; align-items: flex-start; gap: 8px; margin: 22px 0 0 58px !important; padding-top: 18px; border-top: 1px dashed var(--line-strong); }
+.technical-misconception svg { flex: 0 0 auto; margin-top: 2px; color: var(--negative); }
+.technical-misconception strong { color: var(--ink); }
+
+.technical-score-explainer { padding: 24px; border-radius: var(--radius-md); background: var(--forest-deep); color: #fff; }
+.technical-score-explainer > header { display: flex; align-items: flex-start; gap: 12px; }
+.technical-score-explainer > header > svg { flex: 0 0 auto; margin-top: 1px; }
+.technical-score-explainer h3 { margin: 0; font-size: 17px; }
+.technical-score-explainer p { margin: 4px 0 0; color: rgb(255 255 255 / 72%); font-size: 12px; }
+.technical-score-explainer ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 24px; margin: 20px 0 0; padding: 18px 0 0; border-top: 1px solid rgb(255 255 255 / 16%); list-style: none; }
+.technical-score-explainer li { display: grid; grid-template-columns: 52px 1fr; gap: 10px; align-items: start; }
+.technical-score-explainer li > span { padding: 2px 5px; border-radius: 999px; background: rgb(255 255 255 / 10%); color: rgb(255 255 255 / 62%); font-size: 11px; text-align: center; }
+.technical-score-explainer li.is-triggered > span { background: #fff; color: var(--forest); font-weight: 700; }
+.technical-score-explainer li strong, .technical-score-explainer li small { display: block; }
+.technical-score-explainer li strong { font-size: 12px; }
+.technical-score-explainer li small { margin-top: 3px; color: rgb(255 255 255 / 66%); font-size: 11px; line-height: 1.5; }
+
+.technical-formula-block,
+.technical-score-explainer li > span { font-variant-numeric: lining-nums tabular-nums; }
 
 .learning-panel {
   align-self: start;
@@ -202,19 +259,6 @@ main { flex: 1; width: 100%; padding: 26px clamp(24px, 3.2vw, 52px) 0; }
 .learning-panel h2 { display: flex; align-items: center; gap: 9px; margin: 0 0 10px; font-size: 16px; }
 .learning-panel h2 svg { color: var(--forest); }
 .learning-panel p { margin: 0; color: var(--muted-strong); font-size: 13px; line-height: 1.75; }
-.technical-learning-panel { min-height: 0; }
-.score-rules { padding: 20px 0; border-top: 1px solid var(--line); }
-.score-rules > summary { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; color: var(--ink); cursor: pointer; list-style: none; }
-.score-rules > summary::-webkit-details-marker { display: none; }
-.score-rules > summary svg { color: var(--forest); }
-.score-rules > summary > span { color: var(--muted); font-size: 12px; font-weight: 500; }
-.score-rules ul { display: grid; gap: 10px; margin: 16px 0 0; padding: 0; list-style: none; }
-.score-rules li { display: grid; grid-template-columns: 48px 1fr; gap: 9px; align-items: start; }
-.score-rules li > span { margin-top: 1px; padding: 2px 5px; border-radius: 999px; background: var(--surface-soft); color: var(--muted); font-size: 11px; text-align: center; }
-.score-rules li.is-triggered > span { background: var(--forest-soft); color: var(--forest); font-weight: 700; }
-.score-rules li div strong, .score-rules li div small { display: block; }
-.score-rules li div strong { font-size: 12px; line-height: 1.45; }
-.score-rules li div small { margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 
 .chart-data-disclosure { margin: 10px 4px 0; border-top: 1px solid var(--line); }
 .chart-data-disclosure > summary { width: fit-content; min-height: 40px; display: flex; align-items: center; color: var(--forest); font-size: 12px; font-weight: 700; cursor: pointer; }
@@ -266,6 +310,9 @@ footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 22px; wid
   .metric-rail button { min-height: 108px; padding: 13px; }
   .metric-icon { width: 46px; height: 46px; }
   .metric-rail button strong { font-size: 23px; }
+  .technical-learning-layout .metric-rail button { min-height: 126px; }
+  .technical-lesson-explanation, .technical-lesson-application { gap: 24px; }
+  .technical-lesson-explanation section + section, .technical-lesson-application section + section { padding-left: 24px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

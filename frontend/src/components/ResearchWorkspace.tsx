@@ -1,9 +1,8 @@
 import { BookOpenText, ChartLineDown, ChartLineUp, Lightbulb, Scales, ShieldCheck, Target, WaveSine } from '@phosphor-icons/react'
 import { useMemo, useState } from 'react'
-import type { AnalysisResult, AssetProfile, DateRangeKey, Instrument, MetricKey, PriceBar, ResponseMeta } from '../api/types'
+import type { AnalysisResult, DateRangeKey, Instrument, MetricKey, PriceBar } from '../api/types'
 import { instrumentDisplayName } from '../utils/instrumentNames'
 import { performanceLearningScore } from '../utils/learningScores'
-import AssetProfileView from './AssetProfile'
 import ChartDataTable, { type ChartDataColumn } from './ChartDataTable'
 import BeginnerMetricGuide from './BeginnerMetricGuide'
 import DateRangeControl from './DateRangeControl'
@@ -13,8 +12,6 @@ interface ResearchWorkspaceProps {
   instrument: Instrument
   analysis: AnalysisResult
   bars: PriceBar[]
-  profile: AssetProfile
-  profileMeta: ResponseMeta
   range: DateRangeKey
   onRangeChange: (range: DateRangeKey) => void
 }
@@ -46,7 +43,7 @@ const riskLabel = (volatility: number | null) => {
   return '波动较低'
 }
 
-export default function ResearchWorkspace({ instrument, analysis, bars, profile, profileMeta, range, onRangeChange }: ResearchWorkspaceProps) {
+export default function ResearchWorkspace({ instrument, analysis, bars, range, onRangeChange }: ResearchWorkspaceProps) {
   const [activeMetric, setActiveMetric] = useState<MetricKey>('return')
   const { metrics, series } = analysis
   const displayName = instrumentDisplayName(instrument)
@@ -87,12 +84,6 @@ export default function ResearchWorkspace({ instrument, analysis, bars, profile,
   ], [metrics])
 
   const active = metricDefinitions.find((item) => item.key === activeMetric) ?? metricDefinitions[0]
-  const troughIndex = series.drawdown.reduce<number>((lowest, value, index) => {
-    if (value === null) return lowest
-    const current = series.drawdown[lowest]
-    return current === null || value < current ? index : lowest
-  }, 0)
-  const returnTone = (metrics.period_return ?? 0) >= 0 ? 'positive' : 'negative'
   const summary = `${metrics.period_return === null ? '收益数据暂不完整' : metrics.period_return >= 0 ? '区间收益为正' : '区间收益为负'}，${riskLabel(metrics.annualized_volatility)}；先看最大回撤，再判断收益是否值得。`
   const chartColumns: ChartDataColumn[] = activeMetric === 'return'
     ? [
@@ -116,20 +107,6 @@ export default function ResearchWorkspace({ instrument, analysis, bars, profile,
         </div>
         <DateRangeControl range={range} onChange={onRangeChange} />
       </section>
-
-      <dl className="quick-facts">
-        <div><dt>区间表现</dt><dd className={`tone-${returnTone}`}>{formatMetric(metrics.period_return, 'percent')}</dd></div>
-        <div><dt>持有波动</dt><dd>{riskLabel(metrics.annualized_volatility)}</dd></div>
-        <div><dt>最大回撤发生日</dt><dd>{series.dates[troughIndex] ?? '数据不足'}</dd></div>
-      </dl>
-
-      <details className="profile-disclosure">
-        <summary>
-          <span>基础资料</span>
-          <small>{instrument.asset_type === 'etf' ? '跟踪指数、基金规模与持仓' : '行业、估值与市值'}</small>
-        </summary>
-        <AssetProfileView profile={profile} meta={profileMeta} />
-      </details>
 
       <div className="learning-layout">
         <nav className="metric-rail" aria-label="核心量化指标">

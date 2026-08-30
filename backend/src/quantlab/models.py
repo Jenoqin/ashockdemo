@@ -72,6 +72,7 @@ class AnalysisSeries(BaseModel):
     macd_signal: list[float | None] = Field(default_factory=list)
     macd_hist: list[float | None] = Field(default_factory=list)
     rsi14: list[float | None] = Field(default_factory=list)
+    return_20d: list[float | None] = Field(default_factory=list)
     boll_upper: list[float | None] = Field(default_factory=list)
     boll_mid: list[float | None] = Field(default_factory=list)
     boll_lower: list[float | None] = Field(default_factory=list)

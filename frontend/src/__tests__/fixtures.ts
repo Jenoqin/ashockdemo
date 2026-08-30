@@ -53,6 +53,7 @@ export const analysis: AnalysisResult = {
     macd_signal: [0.008, 0.014],
     macd_hist: [0.002, 0.006],
     rsi14: [58, 63],
+    return_20d: [0.04, 0.08],
     boll_upper: [1.3, 1.32],
     boll_mid: [1.22, 1.23],
     boll_lower: [1.14, 1.14],

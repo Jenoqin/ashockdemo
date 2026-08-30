@@ -19,8 +19,21 @@ def test_performance_metrics_annualizes_daily_returns():
 def test_technical_frame_has_declared_columns():
     close_series = pd.Series(np.linspace(1.0, 2.0, 90))
     frame = technical_frame(close_series, close_series * 1.01, close_series * 0.99)
-    assert {"ma5", "ma10", "ma20", "ma60", "macd", "macd_signal", "macd_hist", "rsi14", "boll_upper", "boll_mid", "boll_lower", "atr14_percent"} <= set(frame.columns)
+    assert {"ma5", "ma10", "ma20", "ma60", "macd", "macd_signal", "macd_hist", "rsi14", "return_20d", "boll_upper", "boll_mid", "boll_lower", "atr14_percent"} <= set(frame.columns)
     assert frame["atr14_percent"].dropna().iloc[-1] > 0
+
+
+def test_technical_frame_uses_full_session_offsets():
+    close = pd.Series(np.arange(1.0, 27.0))
+    frame = technical_frame(close)
+
+    assert frame["return_20d"].iloc[-1] == pytest.approx(26.0 / 6.0 - 1)
+
+    scores = score_diagnostics(frame)
+    slope_rule = next(rule for rule in scores.trend.rules if rule.label == "MA20 最近 5 日上行")
+    return_rule = next(rule for rule in scores.momentum.rules if rule.label == "近 20 日收益为正")
+    assert slope_rule.triggered is True
+    assert return_rule.triggered is True
 
 def test_scores_expose_points_and_triggered_rules():
     uptrend_frame = technical_frame(pd.Series(np.linspace(1.0, 2.0, 90)))
@@ -72,3 +85,30 @@ def test_analysis_warms_rolling_volatility_without_changing_selected_metrics():
     )
     assert len(result.series.rolling_volatility) == len(selected)
     assert all(value is not None for value in result.series.rolling_volatility)
+
+
+def test_analysis_warms_technical_indicators_for_short_selected_range():
+    fetched_at = datetime.now(timezone.utc)
+    history = [
+        PriceBar(
+            code="512480.SH",
+            trade_date=date(2026, 1, 1) + timedelta(days=index),
+            open=close,
+            high=close * 1.01,
+            low=close * 0.99,
+            close=close,
+            volume=1000,
+            source="demo",
+            fetched_at=fetched_at,
+        )
+        for index, close in enumerate(np.linspace(1.0, 2.0, 90))
+    ]
+    selected = history[-5:]
+
+    result = analyze_market(selected, history_bars=history)
+
+    assert len(result.series.ma60) == len(selected)
+    assert all(value is not None for value in result.series.ma60)
+    assert all(value is not None for value in result.series.rsi14)
+    assert all(value is not None for value in result.series.return_20d)
+    assert result.diagnostics.trend.score > 0

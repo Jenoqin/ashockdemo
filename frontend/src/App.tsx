@@ -32,8 +32,6 @@ export default function App() {
               instrument={bundle.instrument.data}
               analysis={bundle.analysis.data}
               bars={bundle.market.data}
-              profile={bundle.profile.data}
-              profileMeta={bundle.profile.meta}
               range={range}
               onRangeChange={setRange}
             />

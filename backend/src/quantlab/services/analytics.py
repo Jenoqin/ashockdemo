@@ -59,6 +59,7 @@ def technical_frame(
     df["macd"] = exp12 - exp26
     df["macd_signal"] = df["macd"].ewm(span=9, adjust=False).mean()
     df["macd_hist"] = df["macd"] - df["macd_signal"]
+    df["return_20d"] = close / close.shift(20) - 1
     
     delta = close.diff()
     up, down = delta.copy(), delta.copy()
@@ -108,8 +109,8 @@ def score_diagnostics(frame: pd.DataFrame) -> Diagnostics:
     ma20_above_ma60 = pd.notna(last["ma20"]) and pd.notna(last["ma60"]) and last["ma20"] > last["ma60"]
     t_rules.append(ScoreRule(label="MA20 高于 MA60", points=30, triggered=bool(ma20_above_ma60), explanation="中短期平均价格高于较长期平均价格"))
     
-    if len(frame) >= 5:
-        ma20_slope = frame["ma20"].iloc[-1] - frame["ma20"].iloc[-5]
+    if len(frame) >= 6:
+        ma20_slope = frame["ma20"].iloc[-1] - frame["ma20"].iloc[-6]
         slope_pos = pd.notna(ma20_slope) and ma20_slope > 0
     else:
         slope_pos = False
@@ -125,11 +126,8 @@ def score_diagnostics(frame: pd.DataFrame) -> Diagnostics:
     rsi_range = pd.notna(last["rsi14"]) and 45 <= last["rsi14"] <= 70
     m_rules.append(ScoreRule(label="RSI 位于 45–70", points=35, triggered=bool(rsi_range), explanation="近期上涨力量较强，但尚未进入经验上的过热区"))
     
-    if len(frame) >= 20:
-        ret20 = frame["close"].iloc[-1] / frame["close"].iloc[-20] - 1
-        ret20_pos = pd.notna(ret20) and ret20 > 0
-    else:
-        ret20_pos = False
+    ret20 = last.get("return_20d", np.nan)
+    ret20_pos = pd.notna(ret20) and ret20 > 0
     m_rules.append(ScoreRule(label="近 20 日收益为正", points=35, triggered=bool(ret20_pos), explanation="当前价格高于约 20 个交易日前"))
     
     macd_above_signal = pd.notna(last["macd"]) and pd.notna(last["macd_signal"]) and last["macd"] > last["macd_signal"]
@@ -267,8 +265,19 @@ def analyze_market(
             bench_cum = (1 + overlap["bench"]).prod() - 1
             metrics.excess_return = float(asset_cum - bench_cum)
 
-    frame = technical_frame(df["close"], df["high"], df["low"])
-    diagnostics = score_diagnostics(frame)
+    context_frame = technical_frame(
+        context_df["close"],
+        context_df["high"],
+        context_df["low"],
+    )
+    diagnostics = score_diagnostics(context_frame)
+
+    def selected_technical_series(name: str) -> pd.Series:
+        values_by_date = pd.Series(
+            context_frame[name].to_numpy(),
+            index=context_df["trade_date"],
+        )
+        return df["trade_date"].map(values_by_date)
 
     def optional_values(series: pd.Series) -> list[float | None]:
         return [None if pd.isna(value) else float(value) for value in series]
@@ -283,15 +292,16 @@ def analyze_market(
             drawdown=optional_values(drawdown),
             rolling_volatility=optional_values(rolling_volatility),
             rolling_sharpe=optional_values(rolling_sharpe),
-            ma20=optional_values(frame["ma20"]),
-            ma60=optional_values(frame["ma60"]),
-            macd=optional_values(frame["macd"]),
-            macd_signal=optional_values(frame["macd_signal"]),
-            macd_hist=optional_values(frame["macd_hist"]),
-            rsi14=optional_values(frame["rsi14"]),
-            boll_upper=optional_values(frame["boll_upper"]),
-            boll_mid=optional_values(frame["boll_mid"]),
-            boll_lower=optional_values(frame["boll_lower"]),
-            atr14_percent=optional_values(frame["atr14_percent"]),
+            ma20=optional_values(selected_technical_series("ma20")),
+            ma60=optional_values(selected_technical_series("ma60")),
+            macd=optional_values(selected_technical_series("macd")),
+            macd_signal=optional_values(selected_technical_series("macd_signal")),
+            macd_hist=optional_values(selected_technical_series("macd_hist")),
+            rsi14=optional_values(selected_technical_series("rsi14")),
+            return_20d=optional_values(selected_technical_series("return_20d")),
+            boll_upper=optional_values(selected_technical_series("boll_upper")),
+            boll_mid=optional_values(selected_technical_series("boll_mid")),
+            boll_lower=optional_values(selected_technical_series("boll_lower")),
+            atr14_percent=optional_values(selected_technical_series("atr14_percent")),
         ),
     )
