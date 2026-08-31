@@ -22,6 +22,27 @@ def test_cache_upserts_and_returns_sorted_bars(tmp_path):
     rows = cache.get_bars("Tushare Pro", "512480.SH", date(2026, 1, 1), date(2026, 1, 3))
     assert [(row.trade_date.day, row.close) for row in rows] == [(2, 1.28), (3, 1.31)]
 
+
+def test_cache_omits_legacy_rows_that_fail_price_bar_validation(tmp_path):
+    cache = MarketCache(tmp_path / "test.db")
+    cache.upsert_bars("Tushare Pro", [bar(2, 1.28)])
+    with sqlite3.connect(cache.db_path) as conn:
+        conn.execute("""
+            INSERT INTO price_bars (
+                dataset, code, trade_date, open, high, low, close,
+                volume, amount, source, fetched_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            "Tushare Pro", "512480.SH", "2026-01-03", 1.2, 1.3, 1.1,
+            1.2, -1, 1000, "Tushare Pro", "2026-08-08T00:00:00Z",
+        ))
+
+    rows = cache.get_bars(
+        "Tushare Pro", "512480.SH", date(2026, 1, 1), date(2026, 1, 3)
+    )
+
+    assert [(row.trade_date.day, row.close) for row in rows] == [(2, 1.28)]
+
 def test_cache_creates_missing_parent_directory(tmp_path):
     db_path = tmp_path / "nested" / "cache" / "test.db"
     MarketCache(db_path)

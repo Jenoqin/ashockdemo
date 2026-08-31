@@ -1,3 +1,4 @@
+import math
 from datetime import date
 
 import pandas as pd
@@ -233,5 +234,29 @@ def test_tushare_rejects_out_of_range_adjustment_factor():
 
     with pytest.raises(ProviderError, match="复权因子包含区间外日期"):
         TushareProvider(InvalidFactorFakePro()).get_daily(
+            "600519.SH", date(2026, 1, 1), date(2026, 1, 6)
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("open", None),
+        ("high", math.inf),
+        ("low", 0),
+        ("close", 1500),
+        ("vol", -1),
+        ("amount", math.inf),
+    ],
+)
+def test_tushare_rejects_malformed_daily_numeric_values(field, value):
+    class MalformedDailyFakePro(FakePro):
+        def daily(self, **kwargs):
+            row = super().daily(**kwargs).iloc[0].to_dict()
+            row[field] = value
+            return pd.DataFrame([row])
+
+    with pytest.raises(ProviderError, match="行情响应无效"):
+        TushareProvider(MalformedDailyFakePro()).get_daily(
             "600519.SH", date(2026, 1, 1), date(2026, 1, 6)
         )

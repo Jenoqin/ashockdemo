@@ -4,6 +4,8 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Mapping, Tuple
 
+from pydantic import ValidationError
+
 from quantlab.models import AssetProfile, Instrument, PriceBar
 
 
@@ -452,7 +454,16 @@ class MarketCache:
                   AND trade_date >= ? AND trade_date <= ?
                 ORDER BY trade_date ASC
             """, (dataset, code, start.isoformat(), end.isoformat()))
-            return [PriceBar.model_validate(dict(row)) for row in cursor]
+            bars: list[PriceBar] = []
+            for row in cursor:
+                try:
+                    bars.append(PriceBar.model_validate(dict(row)))
+                except ValidationError:
+                    # Legacy/corrupted cache rows are never allowed back across
+                    # the model boundary. Omitting the row makes its date an
+                    # ordinary cache miss so a valid provider result can repair it.
+                    continue
+            return bars
 
     def mark_synced(
         self, dataset: str, code: str, start: date, end: date

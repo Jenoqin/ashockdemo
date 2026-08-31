@@ -1,5 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
+import math
+import sqlite3
 import time
 
 import pytest
@@ -114,6 +116,19 @@ def seed_complete(cache, code, start, end, bars, *, open_days=None, no_bars=None
     )
 
 
+def insert_invalid_cached_bar(cache, trade_date: date):
+    with sqlite3.connect(cache.db_path) as conn:
+        conn.execute("""
+            INSERT INTO price_bars (
+                dataset, code, trade_date, open, high, low, close,
+                volume, amount, source, fetched_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            DATASET, ETF, trade_date.isoformat(), 1.0, 1.1, 0.9, 1.0,
+            -1, 1000, DATASET, "2026-08-08T00:00:00Z",
+        ))
+
+
 def test_complete_verified_cache_is_used_without_provider(cache):
     start, end = date(2026, 8, 3), date(2026, 8, 5)
     bars = [make_bar(day) for day in days(start, end)]
@@ -215,6 +230,8 @@ def test_failed_partial_refresh_preserves_every_cached_row(cache):
         [make_bar(date(2026, 8, 2))],
         [make_bar(date(2026, 8, 3), code="600519.SH")],
         [make_bar(date(2026, 8, 3)), make_bar(date(2026, 8, 3))],
+        [make_bar(date(2026, 8, 3)).model_copy(update={"volume": -1})],
+        [make_bar(date(2026, 8, 3)).model_copy(update={"high": math.inf})],
     ],
 )
 def test_invalid_provider_response_is_rejected_without_cache_mutation(cache, bad_rows):
@@ -227,6 +244,33 @@ def test_invalid_provider_response_is_rejected_without_cache_mutation(cache, bad
 
     assert cache.get_bars(DATASET, ETF, target, target) == []
     assert cache.get_calendar("SSE", target, target) == {}
+
+
+def test_invalid_cached_row_is_treated_as_a_gap_and_repaired(cache):
+    target = date(2026, 8, 3)
+    seed_complete(cache, ETF, target, target, [])
+    insert_invalid_cached_bar(cache, target)
+    provider = FakeProvider(bars=[make_bar(target)])
+
+    result = MarketDataService(cache, provider).get_daily(ETF, target, target)
+
+    assert result.bars == [make_bar(target)]
+    assert result.meta.cache_hit is False
+    assert provider.daily_calls == [(ETF, target, target)]
+    assert cache.get_bars(DATASET, ETF, target, target) == [make_bar(target)]
+
+
+def test_invalid_cached_row_is_not_used_as_stale_fallback(cache):
+    target = date(2026, 8, 3)
+    seed_complete(cache, ETF, target, target, [])
+    insert_invalid_cached_bar(cache, target)
+
+    with pytest.raises(DataUnavailableError):
+        MarketDataService(cache, FakeProvider(daily_error="down")).get_daily(
+            ETF, target, target
+        )
+
+    assert cache.get_bars(DATASET, ETF, target, target) == []
 
 
 def test_weekend_holiday_and_pre_listing_dates_need_no_daily_query(cache):

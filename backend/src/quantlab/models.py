@@ -1,8 +1,10 @@
 from datetime import date, datetime
-from typing import Literal
-from pydantic import BaseModel, Field
+from typing import Annotated, Literal
+from pydantic import BaseModel, Field, model_validator
 
 AssetType = Literal["etf", "equity"]
+PositiveFiniteFloat = Annotated[float, Field(gt=0, allow_inf_nan=False)]
+NonNegativeFiniteFloat = Annotated[float, Field(ge=0, allow_inf_nan=False)]
 
 class Instrument(BaseModel):
     code: str
@@ -14,14 +16,25 @@ class Instrument(BaseModel):
 class PriceBar(BaseModel):
     code: str
     trade_date: date
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: float
-    amount: float | None = None
+    open: PositiveFiniteFloat
+    high: PositiveFiniteFloat
+    low: PositiveFiniteFloat
+    close: PositiveFiniteFloat
+    volume: NonNegativeFiniteFloat
+    amount: NonNegativeFiniteFloat | None = None
     source: str
     fetched_at: datetime
+
+    @model_validator(mode="after")
+    def validate_ohlc_relationships(self):
+        if self.high < self.low:
+            raise ValueError("high must be greater than or equal to low")
+        tolerance = 1e-5
+        if not self.low - tolerance <= self.open <= self.high + tolerance:
+            raise ValueError("open must be within the low/high range")
+        if not self.low - tolerance <= self.close <= self.high + tolerance:
+            raise ValueError("close must be within the low/high range")
+        return self
 
 class ResponseMeta(BaseModel):
     sources: list[str]

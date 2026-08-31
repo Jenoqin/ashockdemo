@@ -15,6 +15,9 @@ from quantlab.services.quality import validate_bars
 
 FATAL_QUALITY_ERRORS = (
     "INVALID_OHLC",
+    "NON_FINITE_NUMERIC",
+    "NEGATIVE_VOLUME",
+    "INVALID_AMOUNT",
     "DUPLICATE",
     "UNSORTED_DATES",
     "EXTREME_DAILY_RETURN",
