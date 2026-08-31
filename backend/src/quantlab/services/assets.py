@@ -100,9 +100,43 @@ class AssetService:
             pass
         return []
 
-    def get_instrument(self, code: str) -> Instrument:
+    def get_instrument_with_meta(
+        self, code: str
+    ) -> tuple[Instrument, dict[str, Any]]:
         code = normalize_code(code)
-        return self._provider_call(lambda: self.provider.get_instrument(code), code)
+        try:
+            instrument = self._provider_call(
+                lambda: self.provider.get_instrument(code), code
+            )
+        except ProviderError:
+            cached = (
+                self.cache.get_instrument_catalog(self.provider_names[0])
+                if self.cache
+                else None
+            )
+            if cached:
+                entries, fetched_at = cached
+                instrument = next(
+                    (
+                        item
+                        for item, _metadata in entries
+                        if item.code == code
+                    ),
+                    None,
+                )
+                if instrument is not None:
+                    return instrument, {
+                        "sources": self.provider_names[:1],
+                        "fetched_at": fetched_at,
+                        "cache_hit": True,
+                        "warnings": ["STALE_CACHE"],
+                    }
+            raise
+        return instrument, self.catalog_meta()
+
+    def get_instrument(self, code: str) -> Instrument:
+        instrument, _meta = self.get_instrument_with_meta(code)
+        return instrument
 
     def _fetch(self, provider: Any, asset_type: str, code: str) -> dict[str, Any]:
         method_name = "get_etf_profile" if asset_type == "etf" else "get_equity_profile"

@@ -132,6 +132,7 @@ cd backend
 
 ## 文档状态
 
+- [股票与 ETF 数据策略及业务流](docs/data-strategy-and-flow.md) 描述当前实现中的数据获取、SQLite 保存、缓存读取、页面调用链和已知边界，应作为数据层现状的首要参考。
 - 本 README 和 [frontend/README.md](frontend/README.md) 描述当前可运行版本。
 - `docs/superpowers/specs` 与 `docs/superpowers/plans` 保存最初设计和实施过程，属于历史基线，文中已标明与当前实现的差异。
 - [design-qa.md](design-qa.md) 是 2026-08-20 旧版界面的归档验收记录，不代表当前 UI 已完成视觉回归。

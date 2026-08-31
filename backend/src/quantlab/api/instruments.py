@@ -39,10 +39,10 @@ def get_profile(code: str, asset_service: AssetService = Depends(get_asset_servi
 def get_instrument(code: str, asset_service: AssetService = Depends(get_asset_service)):
     try:
         norm_code = normalize_code(code)
-        instrument = asset_service.get_instrument(norm_code)
+        instrument, meta = asset_service.get_instrument_with_meta(norm_code)
         return {
             "data": instrument.model_dump(),
-            "meta": _meta(asset_service, asset_service.catalog_meta()),
+            "meta": _meta(asset_service, meta),
         }
     except ValueError as e:
         return JSONResponse(status_code=422, content={"error": {"code": "INVALID_INSTRUMENT_CODE", "message": str(e)}})

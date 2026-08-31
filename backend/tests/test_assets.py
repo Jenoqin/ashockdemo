@@ -1,4 +1,7 @@
-from datetime import date
+from datetime import date, datetime, timezone
+
+import pytest
+
 from quantlab.cache import MarketCache
 from quantlab.models import Instrument
 from quantlab.providers.base import ProviderError
@@ -75,3 +78,52 @@ def test_stale_profile_is_served_when_refresh_fails(tmp_path):
     assert restored.profile_meta("512480.SH")["warnings"] == ["STALE_CACHE"]
     assert restored.get_profile("512480.SH") == expected
     assert provider.profile_calls == 1
+
+
+def test_stale_catalog_is_served_when_instrument_refresh_fails(tmp_path):
+    cache = MarketCache(tmp_path / "market.db")
+    fetched_at = datetime(2026, 8, 29, tzinfo=timezone.utc)
+    expected = Instrument(
+        code="512480.SH",
+        name="半导体 ETF",
+        asset_type="etf",
+        exchange="SH",
+    )
+    cache.replace_instrument_catalog(
+        "Tushare Pro", [(expected, {})], fetched_at
+    )
+
+    class OfflineProvider(FakeProfileProvider):
+        def get_instrument(self, code):
+            raise ProviderError(self.name, code, "timeout")
+
+    instrument, meta = AssetService(
+        OfflineProvider(), cache
+    ).get_instrument_with_meta("512480.SH")
+
+    assert instrument == expected
+    assert meta == {
+        "sources": ["Tushare Pro"],
+        "fetched_at": fetched_at,
+        "cache_hit": True,
+        "warnings": ["STALE_CACHE"],
+    }
+
+
+def test_instrument_refresh_failure_without_cached_code_is_not_hidden(tmp_path):
+    cache = MarketCache(tmp_path / "market.db")
+    cached = Instrument(
+        code="600519.SH",
+        name="贵州茅台",
+        asset_type="equity",
+        exchange="SH",
+    )
+    cache.replace_instrument_catalog("Tushare Pro", [(cached, {})])
+
+    class OfflineProvider(FakeProfileProvider):
+        def get_instrument(self, code):
+            raise ProviderError(self.name, code, "timeout")
+
+    service = AssetService(OfflineProvider(), cache)
+    with pytest.raises(ProviderError, match="timeout"):
+        service.get_instrument("512480.SH")
