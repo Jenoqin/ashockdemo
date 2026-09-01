@@ -50,6 +50,21 @@ class FakePro:
             ]
         )
 
+    def index_daily(self, **kwargs):
+        assert kwargs["ts_code"] == "H30184.CSI"
+        return pd.DataFrame(
+            [{
+                "ts_code": "H30184.CSI",
+                "trade_date": "20260105",
+                "open": 1000,
+                "high": 1020,
+                "low": 990,
+                "close": 1010,
+                "vol": 500,
+                "amount": 600,
+            }]
+        )
+
 
 def test_tushare_without_token_reports_configuration_error():
     with pytest.raises(ProviderError, match="TUSHARE_TOKEN"):
@@ -86,6 +101,16 @@ def test_tushare_normalizes_hfq_price_and_amount_to_yuan():
     )[0]
     assert row.close == 2820.0
     assert row.amount == 70500000.0
+
+
+def test_tushare_uses_index_daily_for_csi_benchmark_without_adjustment():
+    row = TushareProvider(FakePro()).get_index_daily(
+        "H30184.CSI", date(2026, 1, 1), date(2026, 1, 6)
+    )[0]
+
+    assert row.code == "H30184.CSI"
+    assert row.close == 1010
+    assert row.amount == 600000
 
 
 def test_tushare_catalog_maps_formal_company_name():

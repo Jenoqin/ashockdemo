@@ -4,6 +4,7 @@ def test_market_daily_wraps_data_and_provenance(client):
     body = response.json()
     assert body["data"][0]["code"] == "512480.SH"
     assert body["meta"]["sources"] == ["fake"]
+    assert body["meta"]["data_end_date"] == "2026-03-31"
 
 
 def test_short_analysis_range_has_warmed_rolling_volatility(client):
@@ -14,6 +15,20 @@ def test_short_analysis_range_has_warmed_rolling_volatility(client):
     series = response.json()["data"]["series"]
     assert len(series["dates"]) == 31
     assert all(value is not None for value in series["rolling_volatility"])
+
+
+def test_research_endpoint_returns_one_complete_bundle_without_profile_fetch(client):
+    response = client.get(
+        "/api/research/512480.SH?start=2026-01-01&end=2026-01-31"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["instrument"]["code"] == "512480.SH"
+    assert len(body["data"]["market"]) == 31
+    assert body["data"]["analysis"]["metrics"]["correlation"] is not None
+    assert body["meta"]["sources"] == ["fake"]
+    assert client.app.state.fake_provider.profile_calls == 0
 
 def test_invalid_code_has_stable_error_shape(client):
     response = client.get("/api/instruments/not-a-code")

@@ -10,7 +10,7 @@ import pandas as pd
 
 from quantlab.errors import InstrumentNotFoundError
 from quantlab.models import Instrument, PriceBar
-from quantlab.providers.base import ProviderError, normalize_code
+from quantlab.providers.base import ProviderError, normalize_code, normalize_index_code
 
 
 def _value(value: Any) -> Any:
@@ -325,6 +325,16 @@ class TushareProvider:
             raise ProviderError(self.name, norm, "证券不在基础信息目录中")
         return _iso_date(row.get("list_date"))
 
+    def get_tracking_index_code(self, code: str) -> str | None:
+        """Return ETF benchmark metadata without loading NAV or holdings."""
+        norm = normalize_code(code)
+        self._load_catalog()
+        row = self._etf_rows.get(norm)
+        if row is None:
+            return None
+        value = _value(row.get("index_code"))
+        return str(value).upper() if value else None
+
     def get_equity_profile(self, code: str) -> dict[str, Any]:
         norm = normalize_code(code)
         self._load_catalog()
@@ -549,3 +559,63 @@ class TushareProvider:
             raise
         except Exception as exc:
             raise ProviderError(self.name, norm, f"行情响应无效: {exc}") from exc
+
+    def get_index_daily(
+        self, code: str, start: date, end: date
+    ) -> list[PriceBar]:
+        """Load unadjusted index OHLC data from Tushare's index_daily API."""
+        norm = normalize_index_code(code)
+        self._require_client(norm)
+        try:
+            frame = self.client.index_daily(
+                ts_code=norm,
+                start_date=start.strftime("%Y%m%d"),
+                end_date=end.strftime("%Y%m%d"),
+            )
+        except Exception as exc:
+            raise ProviderError(self.name, norm, str(exc)) from exc
+        if frame is None or frame.empty:
+            return []
+
+        required = {
+            "ts_code", "trade_date", "open", "high", "low", "close", "vol"
+        }
+        if not required.issubset(frame.columns):
+            raise ProviderError(self.name, norm, "指数行情响应字段不完整")
+        if any(str(value).upper() != norm for value in frame["ts_code"]):
+            raise ProviderError(self.name, norm, "指数行情响应包含错误代码")
+
+        parsed_dates = pd.to_datetime(
+            frame["trade_date"].astype(str), errors="coerce"
+        )
+        if parsed_dates.isna().any():
+            raise ProviderError(self.name, norm, "指数行情响应日期无效")
+        days = [value.date() for value in parsed_dates]
+        if len(days) != len(set(days)):
+            raise ProviderError(self.name, norm, "指数行情响应包含重复日期")
+        if any(day < start or day > end for day in days):
+            raise ProviderError(self.name, norm, "指数行情响应包含区间外日期")
+
+        try:
+            frame = frame.copy()
+            frame["trade_date"] = parsed_dates
+            frame = frame.sort_values("trade_date")
+            fetched = datetime.now(timezone.utc)
+            return [
+                PriceBar(
+                    code=norm,
+                    trade_date=row["trade_date"].date(),
+                    open=float(row["open"]),
+                    high=float(row["high"]),
+                    low=float(row["low"]),
+                    close=float(row["close"]),
+                    volume=float(row["vol"]),
+                    # Tushare index_daily documents amount in thousand CNY.
+                    amount=_float(row.get("amount"), 1e3),
+                    source=self.name,
+                    fetched_at=fetched,
+                )
+                for _, row in frame.iterrows()
+            ]
+        except Exception as exc:
+            raise ProviderError(self.name, norm, f"指数行情响应无效: {exc}") from exc

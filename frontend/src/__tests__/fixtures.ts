@@ -11,6 +11,7 @@ export const meta: ResponseMeta = {
   sources: ['Tushare Pro'],
   fetched_at: '2026-08-08T00:00:00Z',
   cache_hit: false,
+  data_end_date: '2026-01-06',
   warnings: []
 }
 
@@ -126,6 +127,5 @@ export const backtestResult: BacktestResult = {
 export const researchBundle = {
   instrument: { data: instrument, meta },
   market: { data: bars, meta },
-  analysis: { data: analysis, meta },
-  profile: { data: etfProfile, meta }
+  analysis: { data: analysis, meta }
 }

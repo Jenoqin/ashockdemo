@@ -70,7 +70,7 @@ export function useResearch(): UseResearchReturn {
     const requestId = ++requestIdRef.current
 
     const fetchData = async () => {
-      setStatus(bundle ? 'refreshing' : 'loading')
+      setStatus((current) => current === 'idle' ? 'loading' : 'refreshing')
       setError(null)
       try {
         const dates = getRangeDates(range)

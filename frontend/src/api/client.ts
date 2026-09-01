@@ -2,7 +2,6 @@ import type {
   Instrument,
   PriceBar,
   AnalysisResult,
-  AssetProfile,
   BacktestRequest,
   BacktestResult,
   Envelope,
@@ -14,7 +13,12 @@ export interface ResearchBundle {
   instrument: Envelope<Instrument>
   market: Envelope<PriceBar[]>
   analysis: Envelope<AnalysisResult>
-  profile: Envelope<AssetProfile>
+}
+
+interface ResearchPayload {
+  instrument: Instrument
+  market: PriceBar[]
+  analysis: AnalysisResult
 }
 
 const BASE_URL = ''
@@ -59,18 +63,15 @@ export const api = {
   loadResearch: async (code: string, range: DateRange, signal?: AbortSignal): Promise<ResearchBundle> => {
     const encCode = encodeURIComponent(code)
     const requestOptions = { signal }
-    const [instrument, market, analysis, profileResult] = await Promise.all([
-      fetchApi<Envelope<Instrument>>(`/api/instruments/${encCode}`, requestOptions),
-      fetchApi<Envelope<PriceBar[]>>(`/api/market/${encCode}/daily?start=${range.start}&end=${range.end}`, requestOptions),
-      fetchApi<Envelope<AnalysisResult>>(`/api/analysis/${encCode}?start=${range.start}&end=${range.end}`, requestOptions),
-      fetchApi<Envelope<AssetProfile>>(`/api/instruments/${encCode}/profile`, requestOptions)
-    ])
+    const result = await fetchApi<Envelope<ResearchPayload>>(
+      `/api/research/${encCode}?start=${range.start}&end=${range.end}`,
+      requestOptions,
+    )
     
     return {
-      instrument,
-      market,
-      analysis,
-      profile: profileResult
+      instrument: { data: result.data.instrument, meta: result.meta },
+      market: { data: result.data.market, meta: result.meta },
+      analysis: { data: result.data.analysis, meta: result.meta },
     }
   },
   

@@ -193,6 +193,7 @@ export interface ResponseMeta {
   sources: string[]
   fetched_at: string
   cache_hit: boolean
+  data_end_date?: string | null
   warnings: string[]
 }
 

@@ -23,6 +23,8 @@ class MarketDataProvider(Protocol):
         raise NotImplementedError
     def get_daily(self, code: str, start: date, end: date) -> list[PriceBar]:
         raise NotImplementedError
+    def get_index_daily(self, code: str, start: date, end: date) -> list[PriceBar]:
+        raise NotImplementedError
 
 def normalize_code(raw: str) -> str:
     value = raw.strip().upper()
@@ -40,3 +42,18 @@ def normalize_code(raw: str) -> str:
     if value[0] in "48":
         return f"{value}.BJ"
     return f"{value}.SH"
+
+
+def normalize_index_code(raw: str) -> str:
+    """Normalize an explicit Tushare index code without treating it as a security."""
+    value = raw.strip().upper()
+    if "." not in value:
+        raise ValueError("指数代码必须包含市场后缀")
+    symbol, exchange = value.rsplit(".", maxsplit=1)
+    if (
+        not symbol
+        or not symbol.replace("-", "").isalnum()
+        or exchange not in {"SH", "SZ", "CSI", "CNI", "SW"}
+    ):
+        raise ValueError("指数代码格式无效")
+    return f"{symbol}.{exchange}"

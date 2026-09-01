@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 import math
 import sqlite3
 import time
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -59,6 +60,8 @@ class FakeProvider:
         self.open_overrides = {}
         self.suspended = set()
         self.daily_calls = []
+        self.index_daily_calls = []
+        self.index_responses = {}
         self.calendar_calls = []
         self.listing_calls = []
 
@@ -87,6 +90,18 @@ class FakeProvider:
         if self.daily_error:
             raise ProviderError(self.name, code, self.daily_error)
         return [bar for bar in self.bars if start <= bar.trade_date <= end]
+
+    def get_index_daily(self, code, start, end):
+        self.index_daily_calls.append((code, start, end))
+        response = self.index_responses.get((start, end))
+        if isinstance(response, Exception):
+            raise response
+        if response is not None:
+            return response
+        return [
+            bar for bar in self.bars
+            if bar.code == code and start <= bar.trade_date <= end
+        ]
 
     def get_suspension_dates(self, code, start, end):
         return {day for day in self.suspended if start <= day <= end}
@@ -142,6 +157,8 @@ def test_complete_verified_cache_is_used_without_provider(cache):
     assert provider.daily_calls == []
     assert provider.calendar_calls == []
     assert provider.listing_calls == []
+    assert result.meta.fetched_at == bars[-1].fetched_at
+    assert result.meta.data_end_date == end
 
 
 def test_complete_verified_cache_works_with_unconfigured_tushare(cache):
@@ -314,17 +331,78 @@ def test_etf_historical_empty_is_confirmed_by_single_day_query(cache):
     assert len(provider.daily_calls) == 2
 
 
-def test_current_open_day_empty_remains_retryable_without_cooldown(cache):
-    target = date.today()
+def test_current_open_day_empty_returns_last_complete_data_without_cooldown(cache):
+    target = date(2026, 8, 31)
     provider = FakeProvider()
     provider.open_overrides[target] = True
+    now = datetime(2026, 8, 31, 20, tzinfo=ZoneInfo("Asia/Shanghai"))
 
-    with pytest.raises(DataUnavailableError):
-        MarketDataService(cache, provider).get_daily(ETF, target, target)
+    result = MarketDataService(
+        cache, provider, now_fn=lambda: now
+    ).get_daily(ETF, target, target)
 
-    assert cache.get_calendar("SSE", target, target) == {}
+    assert result.bars == []
+    assert result.meta.warnings == ["LATEST_BAR_PENDING"]
+    assert cache.get_calendar("SSE", target, target) == {target: True}
     assert cache.get_no_bar_dates(DATASET, ETF, target, target) == {}
     assert cache.provider_in_cooldown(ETF, DATASET) is False
+
+
+def test_current_session_is_excluded_before_daily_publish_cutoff(cache):
+    target = date(2026, 8, 31)
+    provider = FakeProvider(daily_error="must not call", calendar_error="no")
+    now = datetime(2026, 8, 31, 10, tzinfo=ZoneInfo("Asia/Shanghai"))
+
+    result = MarketDataService(
+        cache, provider, now_fn=lambda: now
+    ).get_daily(ETF, target, target)
+
+    assert result.bars == []
+    assert result.meta.warnings == ["CURRENT_SESSION_EXCLUDED"]
+    assert provider.daily_calls == []
+    assert provider.calendar_calls == []
+
+
+def test_current_bar_fetched_before_cutoff_is_refreshed_after_cutoff(cache):
+    target = date(2026, 8, 31)
+    old_bar = make_bar(target, close=1.0)
+    seed_complete(cache, ETF, target, target, [old_bar])
+    provider = FakeProvider()
+    fresh_time = datetime(2026, 8, 31, 11, tzinfo=timezone.utc)
+    fresh_bar = make_bar(target, close=1.2).model_copy(
+        update={"fetched_at": fresh_time}
+    )
+    provider.responses[(target, target)] = [fresh_bar]
+    now = datetime(2026, 8, 31, 20, tzinfo=ZoneInfo("Asia/Shanghai"))
+
+    result = MarketDataService(
+        cache, provider, now_fn=lambda: now
+    ).get_daily(ETF, target, target)
+
+    assert result.bars == [fresh_bar]
+    assert result.meta.cache_hit is False
+    assert result.meta.fetched_at == fresh_time
+    assert provider.daily_calls == [(ETF, target, target)]
+
+
+def test_index_daily_uses_dedicated_provider_and_cache_namespace(cache):
+    code = "H30184.CSI"
+    target = date(2026, 8, 3)
+    index_bar = make_bar(target, code=code, close=1000)
+    provider = FakeProvider()
+    provider.index_responses[(target, target)] = [index_bar]
+
+    result = MarketDataService(cache, provider).get_index_daily(
+        code, target, target
+    )
+
+    assert result.bars == [index_bar]
+    assert provider.index_daily_calls == [(code, target, target)]
+    assert provider.daily_calls == []
+    assert provider.listing_calls == []
+    assert cache.get_bars(
+        f"{DATASET}:index_daily", code, target, target
+    ) == [index_bar]
 
 
 def test_provider_failure_rejects_partial_stale_cache(cache):

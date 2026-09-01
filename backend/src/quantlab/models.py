@@ -40,6 +40,7 @@ class ResponseMeta(BaseModel):
     sources: list[str]
     fetched_at: datetime
     cache_hit: bool
+    data_end_date: date | None = None
     warnings: list[str] = Field(default_factory=list)
 
 class ScoreRule(BaseModel):

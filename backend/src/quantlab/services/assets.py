@@ -138,6 +138,15 @@ class AssetService:
         instrument, _meta = self.get_instrument_with_meta(code)
         return instrument
 
+    def get_tracking_index_code(self, code: str) -> str | None:
+        """Load only ETF benchmark metadata; avoid the heavyweight profile APIs."""
+        code = normalize_code(code)
+        method = getattr(self.provider, "get_tracking_index_code", None)
+        if method is None:
+            return None
+        value = self._provider_call(lambda: method(code), code)
+        return str(value).upper() if value else None
+
     def _fetch(self, provider: Any, asset_type: str, code: str) -> dict[str, Any]:
         method_name = "get_etf_profile" if asset_type == "etf" else "get_equity_profile"
         method = getattr(provider, method_name, None)

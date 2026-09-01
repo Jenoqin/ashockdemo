@@ -72,12 +72,26 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '收起指南' })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText(/区间收益为正时，还要结合最大回撤和波动/)).toBeInTheDocument()
     expect(screen.getByText('Tushare Pro')).toBeInTheDocument()
-    expect(screen.getAllByText(/更新于/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/行情抓取于/).length).toBeGreaterThan(0)
     expect(screen.queryByText('基础资料')).not.toBeInTheDocument()
     expect(screen.queryByText('跟踪指数、基金规模与持仓')).not.toBeInTheDocument()
     expect(screen.queryByText('区间表现')).not.toBeInTheDocument()
     expect(screen.queryByText('持有波动')).not.toBeInTheDocument()
     expect(screen.queryByText('最大回撤发生日')).not.toBeInTheDocument()
+  })
+
+  it('exposes manual market refresh and reloads the research bundle', async () => {
+    vi.mocked(api.refresh).mockResolvedValue({
+      data: { refreshed: true },
+      meta: researchBundle.market.meta,
+    })
+    render(<App />)
+    await screen.findByRole('heading', { name: /半导体 ETF/ })
+
+    await userEvent.click(screen.getByRole('button', { name: '刷新行情' }))
+
+    await waitFor(() => expect(api.refresh).toHaveBeenCalledWith('512480.SH'))
+    await waitFor(() => expect(api.loadResearch).toHaveBeenCalledTimes(2))
   })
 
   it('keeps technical-state and performance scoring on separate learning pages', async () => {

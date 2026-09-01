@@ -34,7 +34,7 @@ npx playwright test  # Playwright E2E
 
 ## 当前页面结构
 
-- `App.tsx`：加载状态与“风险收益课 / 技术状态课”页面切换。
+- `App.tsx`：加载状态、“风险收益课 / 技术状态课”页面切换、行情新鲜度提示和手动刷新入口。
 - `hooks/useResearch.ts`：默认标的、日期区间、并发请求取消和搜索状态。
 - `components/ResearchWorkspace.tsx`：收益、波动、回撤和夏普指标课程。
 - `components/TechnicalWorkspace.tsx`：趋势、动量、波动状态切换，以及左侧状态、中间图表、右侧解释的三栏课程布局。
@@ -43,6 +43,6 @@ npx playwright test  # Playwright E2E
 - `components/MarketChart.tsx`：风险收益联动图。
 - `components/TechnicalChart.tsx`：MA、MACD、RSI、布林带和 ATR 联动图。
 - `components/ChartDataTable.tsx`：图表对应的可展开、可访问数据表。
-- `api/client.ts`：调用 FastAPI 的类型化客户端。
+- `api/client.ts`：通过单次 `/api/research` 请求加载页面 Bundle 的类型化客户端。
 
-`BacktestLab.tsx`、刷新客户端和相应 API 仍保留在代码中，但当前没有挂载到 `App.tsx`。
+`BacktestLab.tsx` 和回测 API 仍保留在代码中，但当前没有挂载到 `App.tsx`；行情刷新已挂载在页脚。

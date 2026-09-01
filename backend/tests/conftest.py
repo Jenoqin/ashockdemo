@@ -11,6 +11,9 @@ from quantlab.api.dependencies import get_market_data_service, get_asset_service
 
 class FullFakeProvider:
     name = "fake"
+
+    def __init__(self):
+        self.profile_calls = 0
     
     def search(self, query):
         if "512480" in query:
@@ -43,6 +46,24 @@ class FullFakeProvider:
             for i in range((end - start).days + 1)
         ]
 
+    def get_index_daily(self, code, start, end):
+        from datetime import datetime, timedelta, timezone
+        fetched = datetime(2026, 8, 8, tzinfo=timezone.utc)
+        return [
+            PriceBar(
+                code=code,
+                trade_date=start + timedelta(days=i),
+                open=1000 + i,
+                high=1010 + i,
+                low=990 + i,
+                close=1000 + i,
+                volume=1000,
+                source="fake",
+                fetched_at=fetched,
+            )
+            for i in range((end - start).days + 1)
+        ]
+
     def get_trade_calendar(self, exchange, start, end):
         from datetime import timedelta
         return {
@@ -53,7 +74,11 @@ class FullFakeProvider:
     def get_listing_date(self, code):
         return date(2000, 1, 1)
 
+    def get_tracking_index_code(self, code):
+        return "H30184.CSI" if code == "512480.SH" else None
+
     def get_etf_profile(self, code):
+        self.profile_calls += 1
         return {"tracking_index": "中证全指半导体产品与设备指数", "holdings": [{"name": "样本公司", "weight": 0.10}]}
 
     def get_equity_profile(self, code):
@@ -71,4 +96,5 @@ def client(tmp_path):
     app.dependency_overrides[get_market_data_service] = lambda: market
     app.dependency_overrides[get_asset_service] = lambda: asset
     app.dependency_overrides[get_backtest_service] = lambda: backtest
+    app.state.fake_provider = fake
     return TestClient(app)
