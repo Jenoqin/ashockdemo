@@ -1,10 +1,31 @@
+import math
 from datetime import date, datetime
 from typing import Annotated, Literal
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 AssetType = Literal["etf", "equity"]
 PositiveFiniteFloat = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 NonNegativeFiniteFloat = Annotated[float, Field(ge=0, allow_inf_nan=False)]
+FiniteFloat = Annotated[float, Field(allow_inf_nan=False)]
+PositiveWindow = Annotated[int, Field(strict=True, gt=0)]
+FeeRate = Annotated[float, Field(ge=0, le=0.1, allow_inf_nan=False)]
+SlippageRate = Annotated[float, Field(ge=0, lt=1, allow_inf_nan=False)]
+
+
+def finite_float_or_none(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("value must be numeric") from exc
+    return number if math.isfinite(number) else None
+
+
+OptionalFiniteFloat = Annotated[
+    FiniteFloat | None,
+    BeforeValidator(finite_float_or_none),
+]
 
 class Instrument(BaseModel):
     code: str
@@ -60,37 +81,39 @@ class Diagnostics(BaseModel):
     drawdown: DiagnosticCategory
 
 class PerformanceMetrics(BaseModel):
-    period_return: float | None = None
-    annualized_return: float | None = None
-    annualized_volatility: float | None = None
-    downside: float | None = None
-    sharpe: float | None = None
-    sortino: float | None = None
-    max_drawdown: float | None = None
+    model_config = ConfigDict(validate_assignment=True)
+
+    period_return: OptionalFiniteFloat = None
+    annualized_return: OptionalFiniteFloat = None
+    annualized_volatility: OptionalFiniteFloat = None
+    downside: OptionalFiniteFloat = None
+    sharpe: OptionalFiniteFloat = None
+    sortino: OptionalFiniteFloat = None
+    max_drawdown: OptionalFiniteFloat = None
     max_drawdown_duration: int | None = None
-    current_drawdown: float | None = None
-    beta: float | None = None
-    correlation: float | None = None
-    excess_return: float | None = None
+    current_drawdown: OptionalFiniteFloat = None
+    beta: OptionalFiniteFloat = None
+    correlation: OptionalFiniteFloat = None
+    excess_return: OptionalFiniteFloat = None
 
 class AnalysisSeries(BaseModel):
     dates: list[date] = Field(default_factory=list)
-    cumulative_return: list[float | None] = Field(default_factory=list)
-    benchmark_return: list[float | None] = Field(default_factory=list)
-    drawdown: list[float | None] = Field(default_factory=list)
-    rolling_volatility: list[float | None] = Field(default_factory=list)
-    rolling_sharpe: list[float | None] = Field(default_factory=list)
-    ma20: list[float | None] = Field(default_factory=list)
-    ma60: list[float | None] = Field(default_factory=list)
-    macd: list[float | None] = Field(default_factory=list)
-    macd_signal: list[float | None] = Field(default_factory=list)
-    macd_hist: list[float | None] = Field(default_factory=list)
-    rsi14: list[float | None] = Field(default_factory=list)
-    return_20d: list[float | None] = Field(default_factory=list)
-    boll_upper: list[float | None] = Field(default_factory=list)
-    boll_mid: list[float | None] = Field(default_factory=list)
-    boll_lower: list[float | None] = Field(default_factory=list)
-    atr14_percent: list[float | None] = Field(default_factory=list)
+    cumulative_return: list[OptionalFiniteFloat] = Field(default_factory=list)
+    benchmark_return: list[OptionalFiniteFloat] = Field(default_factory=list)
+    drawdown: list[OptionalFiniteFloat] = Field(default_factory=list)
+    rolling_volatility: list[OptionalFiniteFloat] = Field(default_factory=list)
+    rolling_sharpe: list[OptionalFiniteFloat] = Field(default_factory=list)
+    ma20: list[OptionalFiniteFloat] = Field(default_factory=list)
+    ma60: list[OptionalFiniteFloat] = Field(default_factory=list)
+    macd: list[OptionalFiniteFloat] = Field(default_factory=list)
+    macd_signal: list[OptionalFiniteFloat] = Field(default_factory=list)
+    macd_hist: list[OptionalFiniteFloat] = Field(default_factory=list)
+    rsi14: list[OptionalFiniteFloat] = Field(default_factory=list)
+    return_20d: list[OptionalFiniteFloat] = Field(default_factory=list)
+    boll_upper: list[OptionalFiniteFloat] = Field(default_factory=list)
+    boll_mid: list[OptionalFiniteFloat] = Field(default_factory=list)
+    boll_lower: list[OptionalFiniteFloat] = Field(default_factory=list)
+    atr14_percent: list[OptionalFiniteFloat] = Field(default_factory=list)
 
 class AnalysisResult(BaseModel):
     metrics: PerformanceMetrics
@@ -98,14 +121,24 @@ class AnalysisResult(BaseModel):
     series: AnalysisSeries = Field(default_factory=AnalysisSeries)
 
 class BacktestRequest(BaseModel):
+    model_config = ConfigDict(validate_assignment=True)
+
     code: str
     start: date | None = None
     end: date | None = None
-    fast_window: int = 20
-    slow_window: int = 60
-    fee_rate: float = 0.0001
-    slippage_rate: float = 0.001
-    initial_cash: float = 100000.0
+    fast_window: PositiveWindow = 20
+    slow_window: PositiveWindow = 60
+    fee_rate: FeeRate = 0.0001
+    slippage_rate: SlippageRate = 0.001
+    initial_cash: PositiveFiniteFloat = 100000.0
+
+    @model_validator(mode="after")
+    def validate_parameter_relationships(self):
+        if self.fast_window >= self.slow_window:
+            raise ValueError("fast_window must be less than slow_window")
+        if self.start is not None and self.end is not None and self.start > self.end:
+            raise ValueError("start must be on or before end")
+        return self
 
 class TradeRecord(BaseModel):
     signal_date: date

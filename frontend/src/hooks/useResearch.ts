@@ -59,56 +59,85 @@ export function useResearch(): UseResearchReturn {
   
   const abortControllerRef = useRef<AbortController | null>(null)
   const requestIdRef = useRef(0)
+  const isMountedRef = useRef(false)
 
-  useEffect(() => {
-    let isMounted = true
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-    }
+  const cancelCurrentRequest = useCallback(() => {
+    abortControllerRef.current?.abort()
+    abortControllerRef.current = null
+    requestIdRef.current += 1
+  }, [])
+
+  const runResearchRequest = useCallback(async (
+    requestCode: string,
+    requestRange: DateRangeKey,
+    refreshFirst: boolean,
+  ) => {
+    if (!isMountedRef.current) return
+    abortControllerRef.current?.abort()
     const controller = new AbortController()
     abortControllerRef.current = controller
     const requestId = ++requestIdRef.current
 
-    const fetchData = async () => {
-      setStatus((current) => current === 'idle' ? 'loading' : 'refreshing')
-      setError(null)
-      try {
-        const dates = getRangeDates(range)
-        const result = await api.loadResearch(code, dates, controller.signal)
-        if (isMounted && requestId === requestIdRef.current) {
-          setBundle(result)
-          setStatus('ready')
-        }
-      } catch (err: any) {
-        if (err?.name === 'AbortError') return
-        if (isMounted && requestId === requestIdRef.current) {
-          setError(err.message || '加载数据失败')
-          setStatus('error')
-        }
+    const isCurrentRequest = () => (
+      isMountedRef.current
+      && requestId === requestIdRef.current
+      && !controller.signal.aborted
+    )
+
+    setStatus((current) => (
+      refreshFirst || current !== 'idle' ? 'refreshing' : 'loading'
+    ))
+    setError(null)
+
+    try {
+      if (refreshFirst) {
+        await api.refresh(requestCode, controller.signal)
+        if (!isCurrentRequest()) return
+      }
+
+      const dates = getRangeDates(requestRange)
+      const result = await api.loadResearch(
+        requestCode,
+        dates,
+        controller.signal,
+      )
+      if (isCurrentRequest()) {
+        setBundle(result)
+        setStatus('ready')
+      }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return
+      if (isCurrentRequest()) {
+        setError(err.message || (refreshFirst ? '刷新失败' : '加载数据失败'))
+        setStatus('error')
+      }
+    } finally {
+      if (requestId === requestIdRef.current) {
+        abortControllerRef.current = null
       }
     }
+  }, [])
 
-    fetchData()
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      cancelCurrentRequest()
+    }
+  }, [cancelCurrentRequest])
+
+  useEffect(() => {
+    void runResearchRequest(code, range, false)
 
     return () => {
-      isMounted = false
-      controller.abort()
+      cancelCurrentRequest()
     }
-  }, [code, range])
+  }, [cancelCurrentRequest, code, range, runResearchRequest])
 
-  const refresh = useCallback(async () => {
-    try {
-      setStatus('refreshing')
-      await api.refresh(code)
-      const dates = getRangeDates(range)
-      const result = await api.loadResearch(code, dates)
-      setBundle(result)
-      setStatus('ready')
-    } catch (err: any) {
-      setError(err.message || '刷新失败')
-      setStatus('error')
-    }
-  }, [code, range])
+  const refresh = useCallback(
+    () => runResearchRequest(code, range, true),
+    [code, range, runResearchRequest],
+  )
 
   const search = useCallback(async (query: string) => {
     try {

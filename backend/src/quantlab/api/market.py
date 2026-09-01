@@ -120,10 +120,21 @@ def refresh_data(
     code: str,
     market_service: MarketDataService = Depends(get_market_data_service)
 ):
-    # Just do a typical refresh on recent history
     today = date.today()
-    try:
-        market_service.get_daily(code, today - timedelta(days=60), today, refresh=True)
-        return {"data": {"refreshed": True}, "meta": {}}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    result = market_service.get_daily(
+        code,
+        today - timedelta(days=60),
+        today,
+        refresh=True,
+    )
+    status = (
+        "refreshed"
+        if result.refreshed
+        else "stale_cache"
+        if "STALE_CACHE" in result.meta.warnings
+        else "not_refreshed"
+    )
+    return {
+        "data": {"refreshed": result.refreshed, "status": status},
+        "meta": result.meta.model_dump(),
+    }

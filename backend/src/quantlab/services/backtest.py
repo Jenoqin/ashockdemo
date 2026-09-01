@@ -6,8 +6,7 @@ from quantlab.models import BacktestRequest, BacktestResult, BacktestMetrics, Tr
 from quantlab.services.analytics import max_drawdown
 
 def run_ma_cross(request: BacktestRequest, bars: List[PriceBar]) -> BacktestResult:
-    if request.fast_window >= request.slow_window:
-        raise ValueError("快线周期必须小于慢线周期")
+    request = BacktestRequest.model_validate(request.model_dump())
         
     if not bars:
         return BacktestResult(

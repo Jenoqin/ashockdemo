@@ -6,7 +6,8 @@ import type {
   BacktestResult,
   Envelope,
   DateRange,
-  ApiError
+  ApiError,
+  RefreshResult,
 } from './types'
 
 export interface ResearchBundle {
@@ -75,8 +76,11 @@ export const api = {
     }
   },
   
-  refresh: (code: string) =>
-    fetchApi<Envelope<{ refreshed: boolean }>>(`/api/data/${encodeURIComponent(code)}/refresh`, { method: 'POST' }),
+  refresh: (code: string, signal?: AbortSignal) =>
+    fetchApi<Envelope<RefreshResult>>(
+      `/api/data/${encodeURIComponent(code)}/refresh`,
+      { method: 'POST', signal },
+    ),
     
   runBacktest: (request: BacktestRequest) =>
     fetchApi<Envelope<BacktestResult>>('/api/backtests/ma-cross', {

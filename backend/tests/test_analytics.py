@@ -1,9 +1,10 @@
+import json
 import math
 import numpy as np
 import pandas as pd
 import pytest
 from datetime import date, datetime, timedelta, timezone
-from quantlab.models import PriceBar
+from quantlab.models import AnalysisSeries, PerformanceMetrics, PriceBar
 from quantlab.services.analytics import analyze_market, max_drawdown, performance_metrics, technical_frame, score_diagnostics
 
 def test_max_drawdown_uses_running_peak():
@@ -15,6 +16,15 @@ def test_performance_metrics_annualizes_daily_returns():
     metrics = performance_metrics(pd.Series([0.01, -0.005, 0.02]), risk_free_rate=0.0)
     expected_vol = pd.Series([0.01, -0.005, 0.02]).std(ddof=1) * math.sqrt(252)
     assert metrics.annualized_volatility == pytest.approx(expected_vol)
+
+
+@pytest.mark.parametrize("non_finite", [math.nan, math.inf, -math.inf])
+def test_analysis_models_convert_non_finite_floats_to_none(non_finite):
+    metrics = PerformanceMetrics(sharpe=non_finite)
+    series = AnalysisSeries(cumulative_return=[non_finite])
+
+    assert metrics.sharpe is None
+    assert series.cumulative_return == [None]
 
 def test_technical_frame_has_declared_columns():
     close_series = pd.Series(np.linspace(1.0, 2.0, 90))
@@ -112,3 +122,28 @@ def test_analysis_warms_technical_indicators_for_short_selected_range():
     assert all(value is not None for value in result.series.rsi14)
     assert all(value is not None for value in result.series.return_20d)
     assert result.diagnostics.trend.score > 0
+
+
+def test_flat_analysis_uses_null_for_uncomputable_metrics_and_serializes_strictly():
+    fetched_at = datetime.now(timezone.utc)
+    bars = [
+        PriceBar(
+            code="600519.SH",
+            trade_date=date(2026, 1, 1) + timedelta(days=index),
+            open=1.0,
+            high=1.0,
+            low=1.0,
+            close=1.0,
+            volume=1000,
+            source="demo",
+            fetched_at=fetched_at,
+        )
+        for index in range(80)
+    ]
+
+    result = analyze_market(bars, benchmark_bars=bars)
+
+    assert result.series.rolling_sharpe[-20:] == [None] * 20
+    assert result.metrics.beta is None
+    assert result.metrics.correlation is None
+    json.dumps(result.model_dump(mode="json"), allow_nan=False)

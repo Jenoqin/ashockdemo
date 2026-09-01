@@ -44,6 +44,7 @@ FETCH_LOCKS = tuple(Lock() for _ in range(64))
 class MarketDataResult(BaseModel):
     bars: List[PriceBar]
     meta: ResponseMeta
+    refreshed: bool = False
 
 
 def _calendar_exchange(code: str) -> str:
@@ -516,6 +517,7 @@ class MarketDataService:
             meta=self._response_meta(
                 bars, cache_hit=cache_hit, warnings=warnings
             ),
+            refreshed=refresh and not cache_hit,
         )
 
     def get_daily(

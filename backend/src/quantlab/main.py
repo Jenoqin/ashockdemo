@@ -1,4 +1,6 @@
 from fastapi import FastAPI, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from .config import get_settings
@@ -61,6 +63,23 @@ def create_app() -> FastAPI:
                 }
             },
         )
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_handler(
+        request: Request,
+        exc: RequestValidationError,
+    ):
+        if request.url.path == "/api/backtests/ma-cross":
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": {
+                        "code": "INVALID_BACKTEST_PARAMETERS",
+                        "message": "回测参数无效",
+                    }
+                },
+            )
+        return await request_validation_exception_handler(request, exc)
 
     app.include_router(instruments.router)
     app.include_router(market.router)

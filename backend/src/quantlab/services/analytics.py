@@ -1,9 +1,18 @@
 import numpy as np
 import pandas as pd
 from typing import Tuple, Optional
-from quantlab.models import AnalysisResult, AnalysisSeries, DiagnosticCategory, Diagnostics, PerformanceMetrics, PriceBar, ScoreRule
+from quantlab.models import (
+    AnalysisResult,
+    AnalysisSeries,
+    DiagnosticCategory,
+    Diagnostics,
+    PerformanceMetrics,
+    PriceBar,
+    ScoreRule,
+    finite_float_or_none,
+)
 
-def max_drawdown(series: pd.Series) -> Tuple[float, int]:
+def max_drawdown(series: pd.Series) -> Tuple[float | None, int]:
     if len(series) == 0:
         return 0.0, 0
     running_max = series.cummax()
@@ -22,7 +31,7 @@ def max_drawdown(series: pd.Series) -> Tuple[float, int]:
         if current_duration > max_duration:
             max_duration = current_duration
 
-    return float(max_dd) if not pd.isna(max_dd) else 0.0, max_duration
+    return finite_float_or_none(max_dd), max_duration
 
 def performance_metrics(returns: pd.Series, risk_free_rate: float = 0.02) -> PerformanceMetrics:
     if len(returns.dropna()) == 0:
@@ -36,11 +45,11 @@ def performance_metrics(returns: pd.Series, risk_free_rate: float = 0.02) -> Per
     sortino = (ann_ret - risk_free_rate) / downside if downside > 0 else None
     
     return PerformanceMetrics(
-        annualized_return=float(ann_ret) if not pd.isna(ann_ret) else None,
-        annualized_volatility=float(ann_vol) if not pd.isna(ann_vol) else None,
-        downside=float(downside) if not pd.isna(downside) else None,
-        sharpe=float(sharpe) if pd.notna(sharpe) else None,
-        sortino=float(sortino) if pd.notna(sortino) else None,
+        annualized_return=finite_float_or_none(ann_ret),
+        annualized_volatility=finite_float_or_none(ann_vol),
+        downside=finite_float_or_none(downside),
+        sharpe=finite_float_or_none(sharpe),
+        sortino=finite_float_or_none(sortino),
     )
 
 def technical_frame(
@@ -186,7 +195,7 @@ def score_diagnostics(frame: pd.DataFrame) -> Diagnostics:
     d_rules.append(ScoreRule(label="当前回撤小于 10%", points=40, triggered=bool(dd_above_10), explanation="当前价格距离区间高点不足 10%"))
     
     max_dd, max_dur = max_drawdown(frame["close"])
-    max_dd_above_20 = max_dd > -0.20
+    max_dd_above_20 = max_dd is not None and max_dd > -0.20
     d_rules.append(ScoreRule(label="最大回撤小于 20%", points=30, triggered=bool(max_dd_above_20), explanation="观察区间最深跌幅未超过 20%"))
     
     dur_below_60 = max_dur <= 60
@@ -213,11 +222,13 @@ def analyze_market(
     df = pd.DataFrame([b.model_dump() for b in bars])
     returns = df["close"].pct_change()
     metrics = performance_metrics(returns, risk_free_rate=risk_free_rate)
-    metrics.period_return = float(df["close"].iloc[-1] / df["close"].iloc[0] - 1)
+    metrics.period_return = finite_float_or_none(
+        df["close"].iloc[-1] / df["close"].iloc[0] - 1
+    )
     metrics.max_drawdown, metrics.max_drawdown_duration = max_drawdown(df["close"])
     running_max = df["close"].cummax()
     drawdown = (df["close"] - running_max) / running_max
-    metrics.current_drawdown = float(drawdown.iloc[-1])
+    metrics.current_drawdown = finite_float_or_none(drawdown.iloc[-1])
 
     cumulative_return = df["close"] / df["close"].iloc[0] - 1
     context_by_date = {
@@ -230,9 +241,25 @@ def analyze_market(
     ])
     context_returns = context_df["close"].pct_change()
     context_rolling_volatility = context_returns.rolling(20).std(ddof=1) * np.sqrt(252)
+    context_rolling_volatility = context_rolling_volatility.where(
+        np.isfinite(context_rolling_volatility)
+    )
     context_rolling_return = (1 + context_returns).rolling(60).apply(np.prod, raw=True) ** (252 / 60) - 1
-    context_rolling_sharpe = (context_rolling_return - risk_free_rate) / (
+    context_rolling_return = context_rolling_return.where(
+        np.isfinite(context_rolling_return)
+    )
+    context_rolling_sharpe_denominator = (
         context_returns.rolling(60).std(ddof=1) * np.sqrt(252)
+    )
+    context_rolling_sharpe_denominator = context_rolling_sharpe_denominator.where(
+        np.isfinite(context_rolling_sharpe_denominator)
+        & context_rolling_sharpe_denominator.gt(0)
+    )
+    context_rolling_sharpe = (
+        context_rolling_return - risk_free_rate
+    ) / context_rolling_sharpe_denominator
+    context_rolling_sharpe = context_rolling_sharpe.where(
+        np.isfinite(context_rolling_sharpe)
     )
     rolling_volatility_by_date = pd.Series(
         context_rolling_volatility.to_numpy(), index=context_df["trade_date"]
@@ -258,12 +285,17 @@ def analyze_market(
         if len(overlap) >= 20:
             cov = overlap.cov().iloc[0, 1]
             var = overlap["bench"].var(ddof=1)
-            metrics.beta = float(cov / var) if var > 0 else None
-            metrics.correlation = float(overlap["asset"].corr(overlap["bench"]))
+            metrics.beta = finite_float_or_none(cov / var) if var > 0 else None
+            asset_var = overlap["asset"].var(ddof=1)
+            metrics.correlation = (
+                finite_float_or_none(overlap["asset"].corr(overlap["bench"]))
+                if asset_var > 0 and var > 0
+                else None
+            )
             # Compounded excess return
             asset_cum = (1 + overlap["asset"]).prod() - 1
             bench_cum = (1 + overlap["bench"]).prod() - 1
-            metrics.excess_return = float(asset_cum - bench_cum)
+            metrics.excess_return = finite_float_or_none(asset_cum - bench_cum)
 
     context_frame = technical_frame(
         context_df["close"],
@@ -280,7 +312,7 @@ def analyze_market(
         return df["trade_date"].map(values_by_date)
 
     def optional_values(series: pd.Series) -> list[float | None]:
-        return [None if pd.isna(value) else float(value) for value in series]
+        return [finite_float_or_none(value) for value in series]
 
     return AnalysisResult(
         metrics=metrics,

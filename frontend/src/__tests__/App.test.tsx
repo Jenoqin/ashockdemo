@@ -82,7 +82,7 @@ describe('App', () => {
 
   it('exposes manual market refresh and reloads the research bundle', async () => {
     vi.mocked(api.refresh).mockResolvedValue({
-      data: { refreshed: true },
+      data: { refreshed: true, status: 'refreshed' },
       meta: researchBundle.market.meta,
     })
     render(<App />)
@@ -90,7 +90,10 @@ describe('App', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '刷新行情' }))
 
-    await waitFor(() => expect(api.refresh).toHaveBeenCalledWith('512480.SH'))
+    await waitFor(() => expect(api.refresh).toHaveBeenCalledWith(
+      '512480.SH',
+      expect.any(AbortSignal),
+    ))
     await waitFor(() => expect(api.loadResearch).toHaveBeenCalledTimes(2))
   })
 

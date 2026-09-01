@@ -148,10 +148,12 @@ FastAPI 的同步路由会通过 AnyIO 工作线程执行 SQLite、Pandas 和外
 | GET | `/api/market/{code}/daily?start=&end=` | 标准化日线 OHLCV |
 | GET | `/api/analysis/{code}?start=&end=` | 风险收益、技术指标和诊断 |
 | GET | `/api/research/{code}?start=&end=` | 聚合返回证券、日线和分析，供主页面单次读取 |
-| POST | `/api/data/{code}/refresh` | 刷新最近行情缓存 |
+| POST | `/api/data/{code}/refresh` | 刷新最近行情缓存并返回真实刷新/降级状态 |
 | POST | `/api/backtests/ma-cross` | 双均线事件回测 |
 
-业务响应通常使用 `{ "data": ..., "meta": ... }` 包装。个别刷新和回测响应的 `meta` 当前为空对象。
+业务响应通常使用 `{ "data": ..., "meta": ... }` 包装。手动刷新只有在上游数据完成验证并提交缓存后才返回 `data.refreshed: true` 和 `data.status: "refreshed"`，同时透传真实的来源、抓取时间、数据截止日、缓存命中和告警元信息。上游失败但存在完整旧缓存时返回 `refreshed: false`、`status: "stale_cache"` 和 `STALE_CACHE`；没有可用缓存时返回稳定的 `DATA_UNAVAILABLE` 错误结构。回测响应的 `meta` 当前为空对象。
+
+双均线回测要求快慢窗口均为正整数且快线小于慢线；开始日期不得晚于结束日期；初始本金必须为有限正数；费率范围为 0–10%（含），滑点范围为 0–100%（不含）。非法请求统一返回 HTTP 422 和 `INVALID_BACKTEST_PARAMETERS`。
 
 ## 文档状态
 

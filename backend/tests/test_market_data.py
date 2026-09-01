@@ -236,9 +236,24 @@ def test_failed_partial_refresh_preserves_every_cached_row(cache):
         ETF, start, end, refresh=True
     )
 
+    assert result.refreshed is False
     assert result.meta.warnings == ["STALE_CACHE"]
     assert result.bars == original
     assert cache.get_bars(DATASET, ETF, start, end) == original
+
+
+def test_successful_manual_refresh_reports_committed_provider_data(cache):
+    start, end = date(2026, 8, 3), date(2026, 8, 5)
+    bars = [make_bar(day) for day in days(start, end)]
+
+    result = MarketDataService(cache, FakeProvider(bars=bars)).get_daily(
+        ETF, start, end, refresh=True
+    )
+
+    assert result.refreshed is True
+    assert result.meta.cache_hit is False
+    assert result.meta.warnings == []
+    assert cache.get_bars(DATASET, ETF, start, end) == bars
 
 
 @pytest.mark.parametrize(
@@ -424,6 +439,7 @@ def test_provider_failure_uses_complete_verified_stale_cache_on_refresh(cache):
         cache, FakeProvider(daily_error="down")
     ).get_daily(ETF, start, end, refresh=True)
 
+    assert result.refreshed is False
     assert result.bars == bars
     assert result.meta.cache_hit is True
     assert result.meta.warnings == ["STALE_CACHE"]

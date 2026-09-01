@@ -197,6 +197,11 @@ export interface ResponseMeta {
   warnings: string[]
 }
 
+export interface RefreshResult {
+  refreshed: boolean
+  status: 'refreshed' | 'stale_cache' | 'not_refreshed'
+}
+
 export interface Envelope<T> {
   data: T
   meta: ResponseMeta

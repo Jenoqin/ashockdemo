@@ -14,13 +14,8 @@ def api_run_ma_cross(
     request: BacktestRequest,
     market_service: MarketDataService = Depends(get_market_data_service)
 ):
-    if request.fast_window >= request.slow_window:
-        return JSONResponse(status_code=422, content={"error": {"code": "INVALID_BACKTEST_PARAMETERS", "message": "fast window must be less than slow window"}})
-    
     start_date = request.start or date(2000, 1, 1)
     end_date = request.end or date.today()
-    if start_date > end_date:
-        return JSONResponse(status_code=422, content={"error": {"code": "INVALID_BACKTEST_PARAMETERS", "message": "start > end"}})
 
     try:
         market_res = market_service.get_daily(request.code, start_date, end_date)
