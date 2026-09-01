@@ -430,11 +430,14 @@ def test_provider_failure_uses_complete_verified_stale_cache_on_refresh(cache):
 
 
 def test_future_range_is_truncated_without_provider_call(cache):
-    start = date.today() + timedelta(days=1)
+    now = datetime(2026, 8, 31, 10, tzinfo=ZoneInfo("Asia/Shanghai"))
+    start = now.date() + timedelta(days=1)
     end = start + timedelta(days=10)
     provider = FakeProvider(daily_error="must not call", calendar_error="no")
 
-    result = MarketDataService(cache, provider).get_daily(ETF, start, end)
+    result = MarketDataService(
+        cache, provider, now_fn=lambda: now
+    ).get_daily(ETF, start, end)
 
     assert result.bars == []
     assert result.meta.warnings == ["FUTURE_RANGE_TRUNCATED"]

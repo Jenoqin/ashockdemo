@@ -1,12 +1,12 @@
-akshare
-fastapi
-numpy
-pandas
-pydantic-settings
-tushare
-uvicorn[standard]
+fastapi==0.141.1
+numpy==2.5.2
+pandas==3.0.5
+pydantic-settings==2.15.0
+tushare==1.4.29
+uvicorn[standard]==0.52.4
 
 [dev]
-httpx
-pytest
-pytest-cov
+httpx==0.28.1
+httpx2==2.12.0
+pytest==9.1.1
+pytest-cov==7.1.0

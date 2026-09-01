@@ -19,13 +19,14 @@
 
 ## 技术栈
 
-- 后端：Python 3.11+、FastAPI、Pydantic、Pandas、NumPy、Tushare Pro、SQLite。
+- 后端：Python 3.12、FastAPI、Pydantic、Pandas、NumPy、Tushare Pro、SQLite。
 - 前端：React 19、TypeScript 6、Vite 8、ECharts 6。
 - 测试：pytest、Vitest、Testing Library、Playwright。
 
 ## 环境要求
 
-- Python 3.11 或更高版本。
+- Python 3.12。后端依赖当前不接受 3.11 或 3.13+。
+- [uv](https://docs.astral.sh/uv/)；Python 环境、锁文件同步和后端命令均通过 uv 管理。
 - Node.js 22.22.2 或更高版本。Vite 本身支持 Node 20.19+，但当前 jsdom 测试依赖要求 Node 22.22.2+。
 - npm。
 - GNU Make 为可选项；仅使用 `make` 快捷命令时需要。
@@ -35,23 +36,32 @@
 以下命令均从仓库根目录执行：
 
 ```bash
-python3 -m venv backend/.venv
-backend/.venv/bin/python -m pip install --upgrade pip
-backend/.venv/bin/python -m pip install -e "./backend[dev]"
+uv python install 3.12
+uv sync --project backend --locked --extra dev
 
 npm --prefix frontend ci
 cp .env.example .env
 ```
 
+`backend/uv.lock` 是后端唯一依赖基线。`--locked` 会在项目声明与锁文件不一致时直接失败，避免本地环境静默漂移。
+
 若现有缓存不能完整覆盖所请求的区间，需通过 `.env` 配置 `TUSHARE_TOKEN` 或 `TUSHARE_TOKEN_FILE`，由 Tushare Pro 补齐缺口。已有 SQLite 缓存不会被安装或启动流程清除。
 
 ## 启动
+
+从仓库根目录快速启动前后端：
+
+```bash
+./start.sh
+```
+
+按 `Ctrl+C` 会同时停止两个服务。也可以分别在两个终端中手动启动：
 
 终端 1：
 
 ```bash
 cd backend
-.venv/bin/uvicorn quantlab.main:app --reload --port 8000
+uv run --locked --extra dev uvicorn quantlab.main:app --reload --port 8000 --loop uvloop
 ```
 
 终端 2：
@@ -70,10 +80,12 @@ npm run dev
 安装 GNU Make 后，可从仓库根目录使用：
 
 ```bash
-make run        # 启动缓存优先、Tushare Pro 补缺的前后端
-make test       # 后端与前端单元测试
-make test-e2e   # 使用当前缓存/Tushare 配置的 Playwright 流程
-make smoke-live # 访问外部数据源的实时 smoke test
+make backend-sync  # 按 uv.lock 同步后端环境
+make backend-check # 锁文件、asyncio/uvloop 预检和后端测试
+make run           # 启动缓存优先、Tushare Pro 补缺的前后端
+make test          # 完整后端门禁与前端单元测试
+make test-e2e      # 使用当前缓存/Tushare 配置的 Playwright 流程
+make smoke-live    # 访问外部数据源的实时 smoke test
 ```
 
 当前 Playwright 用例仍针对上一版界面，更新前不应作为当前 UI 的验收结果。
@@ -98,7 +110,9 @@ Token 文件支持纯 Token、dotenv 风格的 `TUSHARE_TOKEN=...`，以及包�
 
 ```bash
 cd backend
-.venv/bin/pytest
+uv lock --check
+uv run --locked --extra dev python ../scripts/check_async_runtime.py --loop all
+uv run --locked --extra dev pytest
 
 cd ../frontend
 npm test -- --run
@@ -110,8 +124,16 @@ npm run build
 
 ```bash
 cd backend
-.venv/bin/python ../scripts/smoke_live_data.py
+uv run --locked --extra dev python ../scripts/smoke_live_data.py
 ```
+
+### 后端运行时预检
+
+FastAPI 的同步路由会通过 AnyIO 工作线程执行 SQLite、Pandas 和外部数据源等阻塞操作。后端门禁会分别验证默认 `asyncio` 和 `uvloop` 能否在 5 秒内完成一条同步路由；日常 Unix 启动显式使用 `uvloop`。
+
+若预检报告工作线程无法写入事件循环唤醒 socket、`EPERM` 或超时，说明当前沙箱或容器禁止默认 asyncio 所需的跨线程唤醒操作。应改用允许该操作的宿主环境；不要通过降级 AnyIO，或把阻塞 I/O 直接放进 `async def` 路由来规避。
+
+更新后端依赖时，先修改 `backend/pyproject.toml` 中的精确版本，在 `backend` 目录运行 `uv lock`，再回到仓库根目录运行 `make backend-check`；依赖声明与 `uv.lock` 必须一起提交。
 
 ## API 概览
 

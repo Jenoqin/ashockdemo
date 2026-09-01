@@ -1,15 +1,15 @@
 Metadata-Version: 2.4
 Name: quantlab-api
 Version: 0.1.0
-Requires-Python: >=3.11
-Requires-Dist: akshare
-Requires-Dist: fastapi
-Requires-Dist: numpy
-Requires-Dist: pandas
-Requires-Dist: pydantic-settings
-Requires-Dist: tushare
-Requires-Dist: uvicorn[standard]
+Requires-Python: <3.13,>=3.12
+Requires-Dist: fastapi==0.141.1
+Requires-Dist: numpy==2.5.2
+Requires-Dist: pandas==3.0.5
+Requires-Dist: pydantic-settings==2.15.0
+Requires-Dist: tushare==1.4.29
+Requires-Dist: uvicorn[standard]==0.52.4
 Provides-Extra: dev
-Requires-Dist: httpx; extra == "dev"
-Requires-Dist: pytest; extra == "dev"
-Requires-Dist: pytest-cov; extra == "dev"
+Requires-Dist: httpx==0.28.1; extra == "dev"
+Requires-Dist: httpx2==2.12.0; extra == "dev"
+Requires-Dist: pytest==9.1.1; extra == "dev"
+Requires-Dist: pytest-cov==7.1.0; extra == "dev"

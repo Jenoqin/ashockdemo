@@ -439,7 +439,7 @@ class MarketDataService:
         effective_end = min(end, today)
         if end > today:
             warnings.append("FUTURE_RANGE_TRUNCATED")
-        if end >= today and market_now.time() < DAILY_DATA_READY_TIME:
+        if start <= today <= end and market_now.time() < DAILY_DATA_READY_TIME:
             effective_end = min(effective_end, today - timedelta(days=1))
             cached_today = self.cache.get_calendar(
                 _calendar_exchange(code), today, today

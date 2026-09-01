@@ -84,8 +84,13 @@ class FullFakeProvider:
     def get_equity_profile(self, code):
         return {"industry": "食品饮料", "financial_periods": [{"report_date": date(2026, 3, 31), "revenue": 1.0, "net_profit": 0.5}]}
 
-@pytest.fixture
-def client(tmp_path):
+@pytest.fixture(
+    params=[
+        pytest.param({}, id="asyncio"),
+        pytest.param({"use_uvloop": True}, id="uvloop"),
+    ]
+)
+def client(tmp_path, request):
     fake = FullFakeProvider()
     cache = MarketCache(tmp_path / "market.db")
     market = MarketDataService(cache, fake)
@@ -97,4 +102,9 @@ def client(tmp_path):
     app.dependency_overrides[get_asset_service] = lambda: asset
     app.dependency_overrides[get_backtest_service] = lambda: backtest
     app.state.fake_provider = fake
-    return TestClient(app)
+    with TestClient(
+        app,
+        backend="asyncio",
+        backend_options=request.param,
+    ) as test_client:
+        yield test_client
